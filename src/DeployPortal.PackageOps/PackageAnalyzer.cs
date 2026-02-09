@@ -1,0 +1,239 @@
+using System.IO.Compression;
+
+namespace DeployPortal.PackageOps;
+
+/// <summary>
+/// Static helpers for package type detection and module name extraction.
+/// No dependencies — pure logic.
+/// </summary>
+public static class PackageAnalyzer
+{
+    /// <summary>
+    /// Detects whether a ZIP file is an LCS package, Unified package, or other.
+    /// </summary>
+    public static string DetectPackageType(string zipPath)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(zipPath);
+            var entryNames = zip.Entries.Select(e => e.FullName).ToList();
+
+            if (entryNames.Any(n => n.EndsWith("TemplatePackage.dll", StringComparison.OrdinalIgnoreCase)))
+                return "Unified";
+
+            if (entryNames.Any(n => n.StartsWith("AOSService/", StringComparison.OrdinalIgnoreCase)))
+                return "LCS";
+
+            if (entryNames.Any(n => n.Equals("HotfixInstallationInfo.xml", StringComparison.OrdinalIgnoreCase)))
+                return "LCS";
+
+            if (entryNames.Any(n => n.StartsWith("Metadata/", StringComparison.OrdinalIgnoreCase)))
+                return "LCS";
+
+            return "Other";
+        }
+        catch
+        {
+            return "Other";
+        }
+    }
+
+    /// <summary>
+    /// Determines the merge strategy based on package type strings.
+    /// Returns "LCS", "Unified", or null if incompatible.
+    /// </summary>
+    public static string? DetectMergeStrategy(IEnumerable<string> packageTypes)
+    {
+        var types = packageTypes.Distinct().ToList();
+
+        if (types.All(t => t == "LCS" || t == "Merged"))
+            return "LCS";
+
+        if (types.All(t => t == "Unified"))
+            return "Unified";
+
+        if (types.All(t => t == "LCS" || t == "Merged" || t == "Other"))
+            return "LCS";
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts module name from a NuGet-style filename.
+    /// "dynamicsax-sisheavyhighway.1.0.0.0" → "sisheavyhighway"
+    /// "dynamicsax-sisproject360.2021.4.1.1" → "sisproject360"
+    /// </summary>
+    public static string ExtractModuleName(string fileName)
+    {
+        var name = fileName;
+
+        if (name.StartsWith("dynamicsax-", StringComparison.OrdinalIgnoreCase))
+            name = name["dynamicsax-".Length..];
+
+        for (int i = 0; i < name.Length - 1; i++)
+        {
+            if (name[i] == '.' && char.IsDigit(name[i + 1]))
+            {
+                name = name[..i];
+                break;
+            }
+        }
+
+        return name.ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Detects license file names inside a package (LCS or Unified).
+    /// Returns a list of license file names (e.g. ["license1.txt", "license2.xml"]).
+    /// </summary>
+    public static List<string> DetectLicenseFiles(string zipPath)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var zip = ZipFile.OpenRead(zipPath);
+            var entryNames = zip.Entries.Select(e => e.FullName).ToList();
+
+            // LCS: AOSService/Scripts/License/*.txt|*.xml
+            foreach (var e in entryNames)
+            {
+                if (e.StartsWith("AOSService/Scripts/License/", StringComparison.OrdinalIgnoreCase)
+                    || e.StartsWith("AOSService\\Scripts\\License\\", StringComparison.OrdinalIgnoreCase))
+                {
+                    var fn = e.Split('/', '\\').Last();
+                    var ext = Path.GetExtension(fn).ToLowerInvariant();
+                    if ((ext == ".txt" || ext == ".xml") && !string.IsNullOrEmpty(fn))
+                        result.Add(fn);
+                }
+            }
+
+            // Unified: look inside *_managed.zip for _License_ entries
+            if (result.Count == 0)
+            {
+                var managedZips = zip.Entries
+                    .Where(e => e.FullName.EndsWith("_managed.zip", StringComparison.OrdinalIgnoreCase)
+                        && !e.FullName.Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                foreach (var mzEntry in managedZips)
+                {
+                    try
+                    {
+                        using var ms = new MemoryStream();
+                        using (var stream = mzEntry.Open())
+                            stream.CopyTo(ms);
+                        ms.Position = 0;
+
+                        using var innerZip = new ZipArchive(ms, ZipArchiveMode.Read);
+                        foreach (var ie in innerZip.Entries)
+                        {
+                            if (ie.FullName.Contains("/_License_") || ie.FullName.Contains("\\_License_"))
+                            {
+                                var fn = ie.FullName.Split('/', '\\').Last();
+                                if (!string.IsNullOrEmpty(fn))
+                                    result.Add(fn);
+                            }
+                        }
+                    }
+                    catch { /* bad inner zip, skip */ }
+                }
+            }
+        }
+        catch { /* invalid zip */ }
+
+        return result.OrderBy(f => f).ToList();
+    }
+
+    /// <summary>
+    /// Extracts license file contents from a package (LCS or Unified).
+    /// Returns list of (FileName, Content) tuples.
+    /// </summary>
+    public static List<(string FileName, byte[] Content)> ExtractLicenseFileContents(string zipPath)
+    {
+        var result = new List<(string FileName, byte[] Content)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            using var zip = ZipFile.OpenRead(zipPath);
+
+            // LCS: AOSService/Scripts/License/*
+            foreach (var entry in zip.Entries)
+            {
+                if ((entry.FullName.StartsWith("AOSService/Scripts/License/", StringComparison.OrdinalIgnoreCase)
+                    || entry.FullName.StartsWith("AOSService\\Scripts\\License\\", StringComparison.OrdinalIgnoreCase))
+                    && entry.Length > 0)
+                {
+                    var fn = entry.FullName.Split('/', '\\').Last();
+                    var ext = Path.GetExtension(fn).ToLowerInvariant();
+                    if ((ext == ".txt" || ext == ".xml") && seen.Add(fn))
+                    {
+                        using var ms = new MemoryStream();
+                        using var stream = entry.Open();
+                        stream.CopyTo(ms);
+                        result.Add((fn, ms.ToArray()));
+                    }
+                }
+            }
+
+            // Unified: look inside *_managed.zip
+            if (result.Count == 0)
+            {
+                var managedZips = zip.Entries
+                    .Where(e => e.FullName.EndsWith("_managed.zip", StringComparison.OrdinalIgnoreCase)
+                        && !e.FullName.Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                foreach (var mzEntry in managedZips)
+                {
+                    try
+                    {
+                        using var ms = new MemoryStream();
+                        using (var stream = mzEntry.Open())
+                            stream.CopyTo(ms);
+                        ms.Position = 0;
+
+                        using var innerZip = new ZipArchive(ms, ZipArchiveMode.Read);
+                        foreach (var ie in innerZip.Entries)
+                        {
+                            if ((ie.FullName.Contains("/_License_") || ie.FullName.Contains("\\_License_"))
+                                && ie.Length > 0)
+                            {
+                                var fn = ie.FullName.Split('/', '\\').Last();
+                                if (!string.IsNullOrEmpty(fn) && seen.Add(fn))
+                                {
+                                    using var ims = new MemoryStream();
+                                    using var istream = ie.Open();
+                                    istream.CopyTo(ims);
+                                    result.Add((fn, ims.ToArray()));
+                                }
+                            }
+                        }
+                    }
+                    catch { /* bad inner zip */ }
+                }
+            }
+        }
+        catch { /* invalid zip */ }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Extracts module name from managed zip filename.
+    /// "cch_sureaddress_1_0_0_1_managed.zip" → "cch_sureaddress"
+    /// </summary>
+    public static string ExtractModuleNameFromManagedZip(string fileName)
+    {
+        var name = fileName;
+        var suffix = "_managed.zip";
+        if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            name = name[..^suffix.Length];
+
+        var versionPattern = "_1_0_0_1";
+        if (name.EndsWith(versionPattern))
+            name = name[..^versionPattern.Length];
+
+        return name;
+    }
+}

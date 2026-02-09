@@ -1,0 +1,473 @@
+@page "/settings"
+@inject SettingsService SettingsSvc
+@inject ISnackbar Snackbar
+
+<PageTitle>Settings</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Settings</MudText>
+
+@* ===== TOOL STATUS ===== *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.HealthAndSafety" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">Tool Status</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@RefreshStatus"
+                   StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
+    </MudStack>
+
+    @if (_toolStatus != null)
+    {
+        <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+            <thead>
+                <tr>
+                    <th>Tool</th>
+                    <th>Path</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var tool in _toolStatus)
+                {
+                    <tr>
+                        <td><strong>@tool.Name</strong></td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(tool.Path))
+                            {
+                                <code style="font-size:0.85rem; word-break:break-all">@tool.Path</code>
+                            }
+                            else
+                            {
+                                <MudText Color="Color.Warning" Typo="Typo.body2"><em>Not configured</em></MudText>
+                            }
+                        </td>
+                        <td>
+                            @if (tool.Exists)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled"
+                                         Icon="@Icons.Material.Filled.CheckCircle">
+                                    @tool.Message
+                                </MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled"
+                                         Icon="@Icons.Material.Filled.Error">
+                                    @tool.Message
+                                </MudChip>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+</MudPaper>
+
+@* ===== CONVERTER ENGINE ===== *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Transform" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">LCS → Unified Converter</MudText>
+    </MudStack>
+
+    <MudRadioGroup @bind-Value="_converterEngine" Class="mb-3">
+        <MudRadio Value="@("BuiltIn")" Color="Color.Primary">
+            <MudText><strong>Built-in Converter</strong> — no external tools required</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Repackages LCS modules into Unified format directly. Recommended for most scenarios.
+            </MudText>
+        </MudRadio>
+        <MudRadio Value="@("ModelUtil")" Color="Color.Secondary">
+            <MudText><strong>ModelUtil.exe</strong> — official Microsoft tool</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Uses ModelUtil.exe from D365 development tools. Requires Dynamics 365 SDK installed.
+            </MudText>
+        </MudRadio>
+    </MudRadioGroup>
+
+    @if (_converterEngine == "ModelUtil")
+    {
+        <MudTextField @bind-Value="_modelUtilPath" Label="ModelUtil.exe Path"
+                      Variant="Variant.Outlined" Class="mb-3"
+                      Placeholder="C:\...\PackagesLocalDirectory\bin\ModelUtil.exe"
+                      HelperText="Path to ModelUtil.exe. Auto-detected from %LOCALAPPDATA%\Microsoft\Dynamics365 if available."
+                      Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.FolderOpen" />
+    }
+</MudPaper>
+
+@* ===== PROCESSING MODE ===== *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Cloud" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">Processing Mode</MudText>
+    </MudStack>
+
+    <MudRadioGroup @bind-Value="_processingMode" Class="mb-3">
+        <MudRadio Value="@("Local")" Color="Color.Primary">
+            <MudText><strong>Local</strong> — run conversion & merge on this machine</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                All operations run in-process. No cloud services required.
+            </MudText>
+        </MudRadio>
+        <MudRadio Value="@("Azure")" Color="Color.Tertiary">
+            <MudText><strong>Azure Functions</strong> — offload to cloud</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Upload packages to Azure Blob Storage and process via Azure Functions.
+                Requires Azure subscription and deployed DeployPortal.Functions app.
+            </MudText>
+        </MudRadio>
+    </MudRadioGroup>
+
+    @if (_processingMode == "Azure")
+    {
+        <MudTextField @bind-Value="_azureFunctionsUrl" Label="Azure Functions URL"
+                      Variant="Variant.Outlined" Class="mb-3"
+                      Placeholder="https://my-deploy-func.azurewebsites.net"
+                      HelperText="Base URL of the deployed Azure Functions application." />
+
+        <MudTextField @bind-Value="_azureBlobConnectionString" Label="Azure Blob Storage Connection String"
+                      Variant="Variant.Outlined" Class="mb-3" InputType="InputType.Password"
+                      Placeholder="DefaultEndpointsProtocol=https;AccountName=...;AccountKey=..."
+                      HelperText="Connection string for the Azure Storage account used by Functions." />
+
+        <MudTextField @bind-Value="_azureFunctionKey" Label="Function Key"
+                      Variant="Variant.Outlined" Class="mb-3" InputType="InputType.Password"
+                      Placeholder="Azure Functions host key"
+                      HelperText="Host key for authenticating requests to Azure Functions. Found in Azure Portal → Function App → App Keys." />
+    }
+</MudPaper>
+
+@* ===== TOOL PATHS ===== *@
+@{
+    var pacAutoDetected = string.IsNullOrWhiteSpace(_pacCliPath) &&
+        _toolStatus?.Any(t => t.Name == "PAC CLI" && t.Exists) == true;
+}
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Build" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">External Tools</MudText>
+    </MudStack>
+
+    @if (pacAutoDetected)
+    {
+        <MudAlert Severity="Severity.Success" Dense="true" Variant="Variant.Outlined" Class="mb-2">
+            PAC CLI auto-detected in system PATH — no manual configuration needed.
+        </MudAlert>
+    }
+
+    <MudTextField @bind-Value="_pacCliPath" Label="PAC CLI Path"
+                  Variant="Variant.Outlined" Class="mb-3"
+                  Placeholder="Leave empty to auto-detect from PATH"
+                  HelperText="Power Platform CLI. Leave empty to auto-detect from system PATH. Override only if auto-detection doesn't work."
+                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.FolderOpen" />
+</MudPaper>
+
+@* ===== STORAGE PATHS ===== *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Folder" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">Storage</MudText>
+    </MudStack>
+
+    <MudTextField @bind-Value="_packageStoragePath" Label="Package Storage Path"
+                  Variant="Variant.Outlined" Class="mb-3"
+                  HelperText="Directory where uploaded packages are stored." />
+
+    <MudTextField @bind-Value="_tempWorkingDir" Label="Temp Working Directory"
+                  Variant="Variant.Outlined" Class="mb-3"
+                  HelperText="Temporary directory for merge/convert operations." />
+
+    <MudTextField @bind-Value="_databasePath" Label="Database Path"
+                  Variant="Variant.Outlined" Class="mb-3"
+                  HelperText="Path to SQLite database file. Changes require app restart." />
+</MudPaper>
+
+@* ===== SAVE ===== *@
+<MudStack Row="true" Spacing="2" Class="mb-4">
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@SaveSettings"
+               StartIcon="@Icons.Material.Filled.Save" Disabled="@_saving">
+        @(_saving ? "Saving..." : "Save Settings")
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" OnClick="@ReloadSettings"
+               StartIcon="@Icons.Material.Filled.Refresh">
+        Reset to Saved
+    </MudButton>
+</MudStack>
+
+@* ===== DEPLOYMENT INFO ===== *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">Deployment Info</MudText>
+    </MudStack>
+
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+        To run this application on another computer, you need:
+    </MudAlert>
+
+    <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+        <tbody>
+            <tr>
+                <td style="width:200px"><strong>.NET Runtime</strong></td>
+                <td>
+                    @System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Self-contained publish bundles runtime automatically
+                    </MudText>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>ModelUtil.exe</strong></td>
+                <td>
+                    <strong>Optional</strong> — only needed if "ModelUtil" converter engine is selected
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Built-in converter handles LCS → Unified conversion without ModelUtil
+                    </MudText>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>PAC CLI</strong></td>
+                <td>
+                    <code>dotnet tool install --global Microsoft.PowerApps.CLI.Tool</code>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Or install via VS Code Power Platform extension
+                    </MudText>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Application files</strong></td>
+                <td>
+                    Base directory: <code>@AppContext.BaseDirectory</code>
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Settings file</strong></td>
+                <td>
+                    <code>usersettings.json</code> in the application directory
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        Overrides appsettings.json — portable with the application
+                    </MudText>
+                </td>
+            </tr>
+        </tbody>
+    </MudSimpleTable>
+</MudPaper>
+
+@* ===== GETTING STARTED GUIDE ===== *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">Getting Started</MudText>
+    </MudStack>
+
+    <MudText Typo="Typo.body2" Class="mb-4">
+        Follow these steps to set up and deploy your first D365FO package.
+    </MudText>
+
+    <MudTimeline TimelineAlign="TimelineAlign.Start" TimelinePosition="TimelinePosition.Start">
+        @* Step 1 *@
+        <MudTimelineItem Color="Color.Primary" Size="Size.Medium" Variant="Variant.Filled">
+            <ItemDot>
+                <MudText Typo="Typo.subtitle2" Style="color:white">1</MudText>
+            </ItemDot>
+            <ItemContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" Color="Color.Primary" />
+                    <MudText Typo="Typo.subtitle1"><strong>Configure Settings</strong></MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">You are here</MudChip>
+                </MudStack>
+                <MudText Typo="Typo.body2">
+                    Verify tool status above. Ensure <strong>PAC CLI</strong> is installed and detected.
+                    Choose your preferred <strong>converter engine</strong> (Built-in recommended).
+                    Storage paths are pre-configured but can be customized if needed.
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+
+        @* Step 2 *@
+        <MudTimelineItem Color="Color.Warning" Size="Size.Medium" Variant="Variant.Filled">
+            <ItemDot>
+                <MudText Typo="Typo.subtitle2" Style="color:white">2</MudText>
+            </ItemDot>
+            <ItemContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Key" Size="Size.Small" Color="Color.Warning" />
+                    <MudText Typo="Typo.subtitle1"><strong>Create Service Principal</strong></MudText>
+                </MudStack>
+                <MudText Typo="Typo.body2">
+                    A Service Principal (App Registration) in Entra ID is required for PAC CLI to authenticate
+                    to Power Platform without a browser. Go to
+                    <MudLink Href="/environments" Typo="Typo.body2"><strong>Environments</strong></MudLink>
+                    and click <strong>SP Setup Guide</strong> for step-by-step instructions or an automation script.
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                    Requires: Global Admin or Application Admin in Entra ID
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+
+        @* Step 3 *@
+        <MudTimelineItem Color="Color.Secondary" Size="Size.Medium" Variant="Variant.Filled">
+            <ItemDot>
+                <MudText Typo="Typo.subtitle2" Style="color:white">3</MudText>
+            </ItemDot>
+            <ItemContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Dns" Size="Size.Small" Color="Color.Secondary" />
+                    <MudText Typo="Typo.subtitle1"><strong>Add Environments</strong></MudText>
+                </MudStack>
+                <MudText Typo="Typo.body2">
+                    Go to <MudLink Href="/environments" Typo="Typo.body2"><strong>Environments</strong></MudLink>
+                    and register your target Power Platform environments. You can add them one by one via
+                    <strong>Add Environment</strong> or bulk-import from the SP setup script output via
+                    <strong>Import from Script</strong>.
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                    You'll need: Environment URL, Tenant ID, Application (Client) ID, Client Secret
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+
+        @* Step 4 *@
+        <MudTimelineItem Color="Color.Tertiary" Size="Size.Medium" Variant="Variant.Filled">
+            <ItemDot>
+                <MudText Typo="Typo.subtitle2" Style="color:white">4</MudText>
+            </ItemDot>
+            <ItemContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" Color="Color.Tertiary" />
+                    <MudText Typo="Typo.subtitle1"><strong>Upload Packages</strong></MudText>
+                </MudStack>
+                <MudText Typo="Typo.body2">
+                    Go to <MudLink Href="/packages" Typo="Typo.body2"><strong>Packages</strong></MudLink>
+                    and upload your D365FO packages (ZIP files). The system auto-detects package type:
+                </MudText>
+                <MudList T="string" Dense="true" Class="ml-n2 mt-1">
+                    <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">
+                        <strong>LCS</strong> — deployable packages from LCS / Azure DevOps (contain <code>AOSService/</code>)
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">
+                        <strong>Unified</strong> — Power Platform ready packages (contain <code>TemplatePackage.dll</code>)
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">
+                        <strong>Other</strong> — any ZIP (e.g. ISV solutions, data packages)
+                    </MudListItem>
+                </MudList>
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                    Optional: select multiple LCS or Unified packages and <strong>Merge</strong> them into one.
+                    LCS packages are auto-converted to Unified format before deployment.
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+
+        @* Step 5 *@
+        <MudTimelineItem Color="Color.Success" Size="Size.Medium" Variant="Variant.Filled">
+            <ItemDot>
+                <MudText Typo="Typo.subtitle2" Style="color:white">5</MudText>
+            </ItemDot>
+            <ItemContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.Rocket" Size="Size.Small" Color="Color.Success" />
+                    <MudText Typo="Typo.subtitle1"><strong>Deploy!</strong></MudText>
+                </MudStack>
+                <MudText Typo="Typo.body2">
+                    Go to <MudLink Href="/deploy" Typo="Typo.body2"><strong>Deploy</strong></MudLink>,
+                    select a package and one or more target environments, then click <strong>Start Deploy</strong>.
+                    The app will authenticate via Service Principal and push the package using PAC CLI.
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+
+        @* Step 6 *@
+        <MudTimelineItem Color="Color.Default" Size="Size.Medium" Variant="Variant.Outlined">
+            <ItemDot>
+                <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" />
+            </ItemDot>
+            <ItemContent>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle1"><strong>Track History</strong></MudText>
+                </MudStack>
+                <MudText Typo="Typo.body2">
+                    Visit <MudLink Href="/deployments" Typo="Typo.body2"><strong>History</strong></MudLink>
+                    to view all past deployments — status, logs, timestamps, and which package went to which environment.
+                </MudText>
+            </ItemContent>
+        </MudTimelineItem>
+    </MudTimeline>
+</MudPaper>
+
+@code {
+    private string _converterEngine = "BuiltIn";
+    private string _processingMode = "Local";
+    private string _azureFunctionsUrl = "";
+    private string _azureBlobConnectionString = "";
+    private string _azureFunctionKey = "";
+    private string _modelUtilPath = "";
+    private string _pacCliPath = "";
+    private string _packageStoragePath = "";
+    private string _tempWorkingDir = "";
+    private string _databasePath = "";
+    private bool _saving;
+    private List<SettingsService.ToolStatus>? _toolStatus;
+
+    protected override void OnInitialized()
+    {
+        ReloadSettings();
+        RefreshStatus();
+    }
+
+    private void ReloadSettings()
+    {
+        var settings = SettingsSvc.GetAllSettings();
+        _converterEngine = settings.GetValueOrDefault("ConverterEngine", "BuiltIn");
+        _processingMode = settings.GetValueOrDefault("ProcessingMode", "Local");
+        _azureFunctionsUrl = settings.GetValueOrDefault("AzureFunctionsUrl", "");
+        _azureBlobConnectionString = settings.GetValueOrDefault("AzureBlobConnectionString", "");
+        _azureFunctionKey = settings.GetValueOrDefault("AzureFunctionKey", "");
+        _modelUtilPath = settings.GetValueOrDefault("ModelUtilPath", "");
+        _pacCliPath = settings.GetValueOrDefault("PacCliPath", "");
+        _packageStoragePath = settings.GetValueOrDefault("PackageStoragePath", "");
+        _tempWorkingDir = settings.GetValueOrDefault("TempWorkingDir", "");
+        _databasePath = settings.GetValueOrDefault("DatabasePath", "");
+    }
+
+    private void RefreshStatus()
+    {
+        _toolStatus = SettingsSvc.ValidateTools();
+    }
+
+    private void SaveSettings()
+    {
+        _saving = true;
+        try
+        {
+            var settings = new Dictionary<string, string>
+            {
+                ["ConverterEngine"] = _converterEngine,
+                ["ProcessingMode"] = _processingMode,
+                ["AzureFunctionsUrl"] = _azureFunctionsUrl.Trim(),
+                ["AzureBlobConnectionString"] = _azureBlobConnectionString.Trim(),
+                ["AzureFunctionKey"] = _azureFunctionKey.Trim(),
+                ["ModelUtilPath"] = _modelUtilPath.Trim(),
+                ["PacCliPath"] = _pacCliPath.Trim(),
+                ["PackageStoragePath"] = _packageStoragePath.Trim(),
+                ["TempWorkingDir"] = _tempWorkingDir.Trim(),
+                ["DatabasePath"] = _databasePath.Trim()
+            };
+
+            SettingsSvc.SaveSettings(settings);
+            RefreshStatus();
+            Snackbar.Add("Settings saved! Tool paths updated. Database path changes require app restart.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

@@ -1,0 +1,172 @@
+@inherits LayoutComponentBase
+@using System.Reflection
+
+<MudThemeProvider @bind-IsDarkMode="@_isDarkMode" Theme="_theme" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudAppBar Elevation="1" Dense="true">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="@ToggleDrawer" />
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="ml-3">
+            <MudText Typo="Typo.h6">D365FO Deploy Portal</MudText>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                     Style="color:rgba(255,255,255,0.7); border-color:rgba(255,255,255,0.3); height:20px; font-size:0.7rem">
+                v@(_version)
+            </MudChip>
+        </MudStack>
+        <MudSpacer />
+        <MudTooltip Text="About this application">
+            <MudIconButton Icon="@Icons.Material.Filled.Info" Color="Color.Inherit"
+                           OnClick="@(() => _aboutDialogVisible = true)" />
+        </MudTooltip>
+        <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                       Color="Color.Inherit" OnClick="@ToggleDarkMode" />
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent Class="pt-16 px-4" Style="display:flex; flex-direction:column; min-height:calc(100vh - 64px)">
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-4" Style="flex:1">
+            @Body
+        </MudContainer>
+
+        @* ===== FOOTER ===== *@
+        <footer style="border-top:1px solid var(--mud-palette-lines-default); padding:16px 0; margin-top:auto;">
+            <MudContainer MaxWidth="MaxWidth.ExtraLarge">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center"
+                           Style="flex-wrap:wrap; gap:8px;">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Rocket" Size="Size.Small" Color="Color.Primary" />
+                        <MudText Typo="Typo.caption" Style="opacity:0.7">
+                            <strong>D365FO Deploy Portal</strong> v@(_version) by <strong>SIMS tech</strong>
+                        </MudText>
+                    </MudStack>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                        <MudLink Href="/settings" Typo="Typo.caption" Color="Color.Default"
+                                 Style="opacity:0.6; text-decoration:none">
+                            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Size="Size.Small" Class="mr-1" Style="vertical-align:middle" />
+                            Documentation
+                        </MudLink>
+                        <MudText Typo="Typo.caption" Style="opacity:0.4">|</MudText>
+                        <MudLink Href="mailto:support@sims-service.com" Typo="Typo.caption" Color="Color.Default"
+                                 Style="opacity:0.6; text-decoration:none">
+                            <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Class="mr-1" Style="vertical-align:middle" />
+                            support@@sims-service.com
+                        </MudLink>
+                    </MudStack>
+                </MudStack>
+            </MudContainer>
+        </footer>
+    </MudMainContent>
+</MudLayout>
+
+@* ===== ABOUT DIALOG ===== *@
+<MudDialog @bind-Visible="_aboutDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseOnEscapeKey = true }">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Rocket" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">About Deploy Portal</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack AlignItems="AlignItems.Center" Spacing="3" Class="py-4">
+            <MudAvatar Size="Size.Large" Color="Color.Primary" Variant="Variant.Filled" Style="width:72px; height:72px">
+                <MudIcon Icon="@Icons.Material.Filled.Rocket" Size="Size.Large" />
+            </MudAvatar>
+
+            <MudText Typo="Typo.h5" Align="Align.Center" Style="font-weight:700">
+                D365FO Deploy Portal
+            </MudText>
+
+            <MudChip T="string" Size="Size.Medium" Color="Color.Primary" Variant="Variant.Outlined">
+                Version @_version
+            </MudChip>
+
+            <MudText Typo="Typo.body2" Align="Align.Center" Style="max-width:400px; opacity:0.8">
+                Automated deployment tool for Dynamics 365 Finance &amp; Operations packages
+                to Power Platform environments via PAC CLI.
+            </MudText>
+
+            <MudDivider Class="my-2" Style="width:80%" />
+
+            <MudStack Spacing="2" Style="width:100%">
+                <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Color="Color.Primary" />
+                    <MudText Typo="Typo.body2"><strong>SIMS tech</strong></MudText>
+                </MudStack>
+
+                <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Secondary" />
+                    <MudLink Href="mailto:support@sims-service.com" Typo="Typo.body2">
+                        support@@sims-service.com
+                    </MudLink>
+                </MudStack>
+
+                <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudIcon Icon="@Icons.Material.Filled.Language" Size="Size.Small" Color="Color.Tertiary" />
+                    <MudLink Href="https://sims-service.com/products/d365fo-deploy-portal" Target="_blank" Typo="Typo.body2">
+                        sims-service.com — Product Page
+                    </MudLink>
+                </MudStack>
+            </MudStack>
+
+            <MudDivider Class="my-2" Style="width:80%" />
+
+            <MudSimpleTable Dense="true" Hover="false" Elevation="0" Style="max-width:360px">
+                <tbody>
+                    <tr>
+                        <td style="opacity:0.6; width:140px"><MudText Typo="Typo.caption">Runtime</MudText></td>
+                        <td><MudText Typo="Typo.caption">@System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription</MudText></td>
+                    </tr>
+                    <tr>
+                        <td style="opacity:0.6"><MudText Typo="Typo.caption">OS</MudText></td>
+                        <td><MudText Typo="Typo.caption">@System.Runtime.InteropServices.RuntimeInformation.OSDescription</MudText></td>
+                    </tr>
+                    <tr>
+                        <td style="opacity:0.6"><MudText Typo="Typo.caption">Architecture</MudText></td>
+                        <td><MudText Typo="Typo.caption">@System.Runtime.InteropServices.RuntimeInformation.OSArchitecture</MudText></td>
+                    </tr>
+                </tbody>
+            </MudSimpleTable>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _aboutDialogVisible = false)" Variant="Variant.Filled" Color="Color.Primary">
+            Close
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _isDarkMode = false;
+    private bool _aboutDialogVisible = false;
+
+    private string _version = Assembly.GetExecutingAssembly()
+        .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)
+        ?? "1.0.0";
+
+    private MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#1976D2",
+            Secondary = "#FF9800",
+            AppbarBackground = "#1976D2"
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#90CAF9",
+            Secondary = "#FFB74D"
+        }
+    };
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private void ToggleDarkMode() => _isDarkMode = !_isDarkMode;
+}

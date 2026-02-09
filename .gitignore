@@ -1,0 +1,63 @@
+## .NET / C#
+bin/
+obj/
+publish/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+## NuGet
+**/packages/
+*.nupkg
+**/project.lock.json
+**/project.fragment.lock.json
+
+## IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*~
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+bld/
+
+## Rider
+.idea/
+
+## ASP.NET / Blazor
+**/wwwroot/lib/
+
+## Azure Functions
+local.settings.json
+
+## User settings (may contain secrets)
+usersettings.json
+
+## Application data (runtime)
+Packages/
+logs/
+*.db
+*.db-shm
+*.db-wal
+
+## OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+## Temp / test artifacts
+*.tmp
+*.bak
+*.log
+TestResults/
+
+## PDF generated from markdown (regenerable)
+# *.pdf

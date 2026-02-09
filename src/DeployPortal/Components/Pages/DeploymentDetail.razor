@@ -1,0 +1,172 @@
+@page "/deployments/{Id:int}"
+@using Microsoft.AspNetCore.SignalR.Client
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@implements IAsyncDisposable
+
+<PageTitle>Deployment #@Id</PageTitle>
+
+<MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+           OnClick="@(() => Nav.NavigateTo("/deployments"))" Class="mb-2">
+    Back to History
+</MudButton>
+
+@if (_deployment != null)
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.h5" Class="mb-3">Deployment #@_deployment.Id</MudText>
+                <MudSimpleTable Dense="true">
+                    <tbody>
+                        <tr><td><strong>Package</strong></td><td>@_deployment.Package.Name</td></tr>
+                        <tr><td><strong>Environment</strong></td><td>@_deployment.Environment.Name (@_deployment.Environment.Url)</td></tr>
+                        <tr>
+                            <td><strong>Status</strong></td>
+                            <td>
+                                <MudChip T="string" Color="@GetStatusColor(_deployment.Status)">
+                                    @_deployment.Status
+                                </MudChip>
+                            </td>
+                        </tr>
+                        <tr><td><strong>Queued</strong></td><td>@_deployment.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
+                        <tr><td><strong>Started</strong></td><td>@(_deployment.StartedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</td></tr>
+                        <tr><td><strong>Completed</strong></td><td>@(_deployment.CompletedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "-")</td></tr>
+                        <tr>
+                            <td><strong>Duration</strong></td>
+                            <td>@GetDuration(_deployment)</td>
+                        </tr>
+                        @if (!string.IsNullOrEmpty(_deployment.DevOpsTaskUrl))
+                        {
+                            <tr>
+                                <td><strong>DevOps Task</strong></td>
+                                <td>
+                                    <MudLink Href="@_deployment.DevOpsTaskUrl" Target="_blank" Color="Color.Info">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                            <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" />
+                                            <span>@_deployment.DevOpsTaskUrl</span>
+                                        </MudStack>
+                                    </MudLink>
+                                </td>
+                            </tr>
+                        }
+                        @if (!string.IsNullOrEmpty(_deployment.ErrorMessage))
+                        {
+                            <tr><td><strong>Error</strong></td><td class="mud-error-text">@_deployment.ErrorMessage</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h5" Class="mt-4 mb-2">Deployment Log</MudText>
+    <MudPaper Class="pa-3" Elevation="2" Style="max-height:500px; overflow-y:auto; font-family:monospace; font-size:0.85rem; background:#1e1e1e; color:#ddd;">
+        @foreach (var log in _logs)
+        {
+            <div style="@GetLogStyle(log.Level)">
+                <span style="color:#888;">@log.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                <span style="margin:0 8px;">[@log.Level]</span>
+                @log.Message
+            </div>
+        }
+        @if (!_logs.Any())
+        {
+            <div style="color:#888;">No log entries yet. Waiting...</div>
+        }
+    </MudPaper>
+}
+else
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Deployment? _deployment;
+    private List<DeploymentLog> _logs = new();
+    private HubConnection? _hubConnection;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        await ConnectToHub();
+    }
+
+    private async Task LoadData()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _deployment = await db.Deployments
+            .Include(d => d.Package)
+            .Include(d => d.Environment)
+            .FirstOrDefaultAsync(d => d.Id == Id);
+
+        _logs = await db.DeploymentLogs
+            .Where(l => l.DeploymentId == Id)
+            .OrderBy(l => l.Timestamp)
+            .ToListAsync();
+    }
+
+    private async Task ConnectToHub()
+    {
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(Nav.ToAbsoluteUri("/hubs/deploylog"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<string, string, string>("ReceiveLog", (time, level, message) =>
+        {
+            _logs.Add(new DeploymentLog
+            {
+                Timestamp = DateTime.TryParse(time, out var t) ? t : DateTime.UtcNow,
+                Level = level,
+                Message = message
+            });
+            InvokeAsync(StateHasChanged);
+        });
+
+        _hubConnection.On<string>("StatusChanged", async (status) =>
+        {
+            await LoadData();
+            await InvokeAsync(StateHasChanged);
+        });
+
+        await _hubConnection.StartAsync();
+        await _hubConnection.InvokeAsync("JoinDeploymentGroup", Id);
+    }
+
+    private Color GetStatusColor(DeploymentStatus status) => status switch
+    {
+        DeploymentStatus.Success => Color.Success,
+        DeploymentStatus.Failed => Color.Error,
+        DeploymentStatus.Deploying or DeploymentStatus.Converting or DeploymentStatus.Merging => Color.Info,
+        DeploymentStatus.Queued => Color.Default,
+        _ => Color.Default
+    };
+
+    private string GetDuration(Deployment d)
+    {
+        if (d.StartedAt == null) return "-";
+        var end = d.CompletedAt ?? DateTime.UtcNow;
+        var duration = end - d.StartedAt.Value;
+        if (duration.TotalHours >= 1)
+            return duration.ToString(@"h\:mm\:ss");
+        return duration.ToString(@"mm\:ss");
+    }
+
+    private string GetLogStyle(string level) => level switch
+    {
+        "Error" => "color: #f44336;",
+        "Warning" => "color: #ff9800;",
+        _ => ""
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hubConnection != null)
+        {
+            await _hubConnection.DisposeAsync();
+        }
+    }
+}

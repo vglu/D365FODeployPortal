@@ -1,0 +1,128 @@
+@page "/deployments"
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+
+<PageTitle>Deployment History</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Deployment History</MudText>
+
+<MudStack Row="true" Class="mb-4" Spacing="3">
+    <MudSelect T="int?" @bind-Value="_filterPackageId" Label="Filter by Package" Variant="Variant.Outlined"
+               Clearable="true" Style="max-width:300px;">
+        @foreach (var pkg in _allPackages)
+        {
+            <MudSelectItem T="int?" Value="@((int?)pkg.Id)">@pkg.Name</MudSelectItem>
+        }
+    </MudSelect>
+    <MudSelect T="int?" @bind-Value="_filterEnvId" Label="Filter by Environment" Variant="Variant.Outlined"
+               Clearable="true" Style="max-width:300px;">
+        @foreach (var env in _allEnvironments)
+        {
+            <MudSelectItem T="int?" Value="@((int?)env.Id)">@env.Name</MudSelectItem>
+        }
+    </MudSelect>
+    <MudButton Variant="Variant.Outlined" OnClick="@LoadData" StartIcon="@Icons.Material.Filled.Search">
+        Filter
+    </MudButton>
+</MudStack>
+
+<MudTable Items="@_deployments" Dense="true" Hover="true" Elevation="2" Loading="@_loading"
+          OnRowClick="@((TableRowClickEventArgs<Deployment> args) => Nav.NavigateTo($"/deployments/{args.Item.Id}"))">
+    <HeaderContent>
+        <MudTh>ID</MudTh>
+        <MudTh>Package</MudTh>
+        <MudTh>Environment</MudTh>
+        <MudTh>Status</MudTh>
+        <MudTh>Queued</MudTh>
+        <MudTh>Started</MudTh>
+        <MudTh>Completed</MudTh>
+        <MudTh>Duration</MudTh>
+        <MudTh Style="width:44px">
+            <MudTooltip Text="DevOps Task"><MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" /></MudTooltip>
+        </MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd>@context.Id</MudTd>
+        <MudTd>@context.Package.Name</MudTd>
+        <MudTd>@context.Environment.Name</MudTd>
+        <MudTd>
+            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                @context.Status
+            </MudChip>
+        </MudTd>
+        <MudTd>@context.QueuedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudTd>
+        <MudTd>@(context.StartedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
+        <MudTd>@(context.CompletedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
+        <MudTd>@GetDuration(context)</MudTd>
+        <MudTd Style="text-align:center">
+            @if (!string.IsNullOrEmpty(context.DevOpsTaskUrl))
+            {
+                <MudTooltip Text="@context.DevOpsTaskUrl">
+                    <span @onclick:stopPropagation="true">
+                        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Info"
+                                       Href="@context.DevOpsTaskUrl" Target="_blank" />
+                    </span>
+                </MudTooltip>
+            }
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@code {
+    private List<Deployment> _deployments = new();
+    private List<Package> _allPackages = new();
+    private List<Models.Environment> _allEnvironments = new();
+    private bool _loading = true;
+    private int? _filterPackageId;
+    private int? _filterEnvId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _allPackages = await db.Packages.OrderBy(p => p.Name).ToListAsync();
+        _allEnvironments = await db.Environments.OrderBy(e => e.Name).ToListAsync();
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var query = db.Deployments
+            .Include(d => d.Package)
+            .Include(d => d.Environment)
+            .AsQueryable();
+
+        if (_filterPackageId.HasValue)
+            query = query.Where(d => d.PackageId == _filterPackageId.Value);
+        if (_filterEnvId.HasValue)
+            query = query.Where(d => d.EnvironmentId == _filterEnvId.Value);
+
+        _deployments = await query
+            .OrderByDescending(d => d.QueuedAt)
+            .Take(100)
+            .ToListAsync();
+
+        _loading = false;
+    }
+
+    private Color GetStatusColor(DeploymentStatus status) => status switch
+    {
+        DeploymentStatus.Success => Color.Success,
+        DeploymentStatus.Failed => Color.Error,
+        DeploymentStatus.Deploying or DeploymentStatus.Converting or DeploymentStatus.Merging => Color.Info,
+        DeploymentStatus.Queued => Color.Default,
+        _ => Color.Default
+    };
+
+    private string GetDuration(Deployment d)
+    {
+        if (d.StartedAt == null) return "-";
+        var end = d.CompletedAt ?? DateTime.UtcNow;
+        var duration = end - d.StartedAt.Value;
+        return duration.TotalHours >= 1
+            ? duration.ToString(@"h\:mm\:ss")
+            : duration.ToString(@"mm\:ss");
+    }
+}

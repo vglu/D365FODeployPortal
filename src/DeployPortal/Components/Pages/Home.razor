@@ -1,0 +1,127 @@
+@page "/"
+@inject EnvironmentService EnvService
+@inject PackageService PkgService
+@inject SettingsService SettingsSvc
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<PageTitle>D365FO Deploy Portal</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+
+@if (_toolWarnings.Count > 0)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4" Dense="false"
+              Icon="@Icons.Material.Filled.Warning">
+        <MudText Typo="Typo.subtitle2" Class="mb-1">Setup required</MudText>
+        @foreach (var w in _toolWarnings)
+        {
+            <MudText Typo="Typo.body2">@w</MudText>
+        }
+        <MudButton Variant="Variant.Text" Color="Color.Warning" Href="/settings" Class="mt-1"
+                   StartIcon="@Icons.Material.Filled.Settings" Size="Size.Small">
+            Go to Settings
+        </MudButton>
+    </MudAlert>
+}
+
+<MudGrid>
+    <MudItem xs="12" sm="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Large" Color="Color.Primary" />
+                <div>
+                    <MudText Typo="Typo.h4">@_packageCount</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Packages</MudText>
+                </div>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Large" Color="Color.Success" />
+                <div>
+                    <MudText Typo="Typo.h4">@_envCount</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Environments</MudText>
+                </div>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" sm="4">
+        <MudPaper Class="pa-4" Elevation="2">
+            <MudStack Row="true" AlignItems="AlignItems.Center">
+                <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Size="Size.Large" Color="Color.Warning" />
+                <div>
+                    <MudText Typo="Typo.h4">@_deployCount</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">Deployments</MudText>
+                </div>
+            </MudStack>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@if (_recentDeployments.Any())
+{
+    <MudText Typo="Typo.h5" Class="mt-6 mb-3">Recent Deployments</MudText>
+    <MudTable Items="@_recentDeployments" Dense="true" Hover="true" Elevation="2">
+        <HeaderContent>
+            <MudTh>Package</MudTh>
+            <MudTh>Environment</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Date</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Package.Name</MudTd>
+            <MudTd>@context.Environment.Name</MudTd>
+            <MudTd>
+                <MudChip T="string" Size="Size.Small"
+                         Color="@GetStatusColor(context.Status)">
+                    @context.Status
+                </MudChip>
+            </MudTd>
+            <MudTd>@context.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private int _packageCount;
+    private int _envCount;
+    private int _deployCount;
+    private List<Deployment> _recentDeployments = new();
+    private List<string> _toolWarnings = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Check tool configuration
+        var toolStatus = SettingsSvc.ValidateTools();
+        _toolWarnings = toolStatus.Where(t => !t.Exists).Select(t => $"{t.Name}: {t.Message}").ToList();
+        var packages = await PkgService.GetAllAsync();
+        _packageCount = packages.Count;
+
+        var envs = await EnvService.GetAllAsync();
+        _envCount = envs.Count;
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        _deployCount = await db.Deployments.CountAsync();
+        _recentDeployments = await db.Deployments
+            .Include(d => d.Package)
+            .Include(d => d.Environment)
+            .OrderByDescending(d => d.QueuedAt)
+            .Take(10)
+            .ToListAsync();
+    }
+
+    private Color GetStatusColor(DeploymentStatus status) => status switch
+    {
+        DeploymentStatus.Success => Color.Success,
+        DeploymentStatus.Failed => Color.Error,
+        DeploymentStatus.Deploying => Color.Info,
+        DeploymentStatus.Converting => Color.Info,
+        DeploymentStatus.Merging => Color.Info,
+        DeploymentStatus.Queued => Color.Default,
+        _ => Color.Default
+    };
+}

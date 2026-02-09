@@ -1,0 +1,294 @@
+@page "/deploy"
+@inject PackageService PkgService
+@inject EnvironmentService EnvService
+@inject DeploymentOrchestrator Orchestrator
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<PageTitle>Deploy</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Deploy Package</MudText>
+
+<MudGrid Spacing="4">
+    @* ===== PACKAGE SELECTION ===== *@
+    <MudItem xs="12" lg="6">
+        <MudPaper Class="pa-0" Elevation="2" Style="display:flex; flex-direction:column; height:100%;">
+            <MudTable Items="@_packages" Dense="true" Hover="true" Elevation="0"
+                      RowClass="cursor-pointer" RowClassFunc="@PkgRowClass"
+                      OnRowClick="@OnPackageRowClick" T="Package"
+                      Loading="@_loading" FixedHeader="true" Height="460px"
+                      Filter="new Func<Package, bool>(PkgFilter)"
+                      Breakpoint="Breakpoint.None">
+                <ToolBarContent>
+                    <MudIcon Icon="@Icons.Material.Filled.Inventory2" Color="Color.Primary" Class="mr-2" />
+                    <MudText Typo="Typo.h6">1. Select Package</MudText>
+                    @if (_selectedPackageId.HasValue)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined"
+                                 Class="ml-2" OnClose="@(() => { _selectedPackageId = null; })">
+                            Selected
+                        </MudChip>
+                    }
+                    <MudSpacer />
+                    <MudTextField @bind-Value="_pkgSearch" Placeholder="Search..." Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate="true" DebounceInterval="200" Margin="Margin.Dense"
+                                  Clearable="true" Style="max-width:220px" />
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.Name)">Name</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.PackageType)">Type</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.FileSizeBytes)">Size</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.UploadedAt)" InitialDirection="SortDirection.Descending">Uploaded</MudTableSortLabel></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Name">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            @if (_selectedPackageId == context.Id)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                            }
+                            <span style="@(_selectedPackageId == context.Id ? "font-weight:600" : "")">@context.Name</span>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Type">
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@PkgTypeColor(context.PackageType)">@context.PackageType</MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Size">@FormatSize(context.FileSizeBytes)</MudTd>
+                    <MudTd DataLabel="Uploaded">
+                        <MudTooltip Text="@context.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                            <span>@context.UploadedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Color="Color.Warning" Class="pa-4">
+                        No packages found. <MudLink Href="/packages">Upload packages</MudLink>.
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    </MudItem>
+
+    @* ===== ENVIRONMENT SELECTION ===== *@
+    <MudItem xs="12" lg="6">
+        <MudPaper Class="pa-0" Elevation="2" Style="display:flex; flex-direction:column; height:100%;">
+            <MudTable Items="@_environments" Dense="true" Hover="true" Elevation="0"
+                      RowClass="cursor-pointer" RowClassFunc="@EnvRowClass"
+                      OnRowClick="@OnEnvRowClick" T="Models.Environment"
+                      Loading="@_loading" FixedHeader="true" Height="460px"
+                      Filter="new Func<Models.Environment, bool>(EnvFilter)"
+                      Breakpoint="Breakpoint.None">
+                <ToolBarContent>
+                    <MudIcon Icon="@Icons.Material.Filled.Cloud" Color="Color.Success" Class="mr-2" />
+                    <MudText Typo="Typo.h6">2. Environments</MudText>
+                    @if (_selectedEnvIds.Any())
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Class="ml-2">
+                            @_selectedEnvIds.Count selected
+                        </MudChip>
+                    }
+                    <MudSpacer />
+                    <MudButtonGroup Size="Size.Small" Variant="Variant.Text" Color="Color.Default" Class="mr-2">
+                        <MudIconButton Icon="@Icons.Material.Filled.SelectAll" OnClick="@SelectAllEnvs"
+                                       Title="Select all" Size="Size.Small" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Deselect" OnClick="@DeselectAllEnvs"
+                                       Title="Deselect all" Size="Size.Small" />
+                    </MudButtonGroup>
+                    <MudTextField @bind-Value="_envSearch" Placeholder="Search..." Variant="Variant.Outlined"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Immediate="true" DebounceInterval="200" Margin="Margin.Dense"
+                                  Clearable="true" Style="max-width:220px" />
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh Style="width:44px; padding:0"></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Name)" InitialDirection="SortDirection.Ascending">Name</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Url)">URL</MudTableSortLabel></MudTh>
+                    <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.CreatedAt)">Created</MudTableSortLabel></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd Style="width:44px; padding:4px 0 4px 8px;">
+                        <MudCheckBox T="bool" Value="@_selectedEnvIds.Contains(context.Id)"
+                                     ValueChanged="@(v => ToggleEnv(context.Id, v))"
+                                     Color="Color.Primary" Dense="true" />
+                    </MudTd>
+                    <MudTd DataLabel="Name">
+                        <span style="@(_selectedEnvIds.Contains(context.Id) ? "font-weight:600" : "")">@context.Name</span>
+                    </MudTd>
+                    <MudTd DataLabel="URL">
+                        <span class="mud-text-secondary" style="font-size:0.85rem">@context.Url</span>
+                    </MudTd>
+                    <MudTd DataLabel="Created">
+                        <MudTooltip Text="@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                            <span>@context.CreatedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                        </MudTooltip>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Color="Color.Warning" Class="pa-4">
+                        No active environments. <MudLink Href="/environments">Add them</MudLink>.
+                    </MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@* ===== DEPLOY ACTION ===== *@
+<MudPaper Class="pa-4 mt-4" Elevation="3">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+        <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Size="Size.Large"
+                 Color="@(_canDeploy ? Color.Primary : Color.Default)" />
+        <div style="flex:1">
+            @if (_canDeploy)
+            {
+                var pkg = _packages.FirstOrDefault(p => p.Id == _selectedPackageId);
+                <MudText Typo="Typo.body1">
+                    Deploy <strong>@pkg?.Name</strong> to <strong>@_selectedEnvIds.Count</strong> environment(s)
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Each environment will be deployed in parallel
+                </MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.body1" Color="Color.Secondary">
+                    @if (!_selectedPackageId.HasValue && !_selectedEnvIds.Any())
+                    { @("Select a package and at least one environment") }
+                    else if (!_selectedPackageId.HasValue)
+                    { @("Select a package") }
+                    else
+                    { @("Select at least one environment") }
+                </MudText>
+            }
+        </div>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.RocketLaunch"
+                   Disabled="@(!_canDeploy || _deploying)"
+                   OnClick="@StartDeploy">
+            @(_deploying ? "Queuing..." : "Start Deploy")
+        </MudButton>
+    </MudStack>
+    <MudTextField @bind-Value="_deployDevOpsUrl" Label="Azure DevOps Task URL (optional, auto-filled from package)"
+                  Placeholder="https://dev.azure.com/org/project/_workitems/edit/12345"
+                  Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-3"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Link"
+                  Clearable="true" />
+</MudPaper>
+
+@code {
+    private List<Package> _packages = new();
+    private List<Models.Environment> _environments = new();
+    private int? _selectedPackageId;
+    private HashSet<int> _selectedEnvIds = new();
+    private bool _deploying;
+    private bool _loading = true;
+    private string _pkgSearch = "";
+    private string _envSearch = "";
+    private string _deployDevOpsUrl = "";
+
+    private bool _canDeploy => _selectedPackageId.HasValue && _selectedEnvIds.Any() && !_deploying;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _loading = true;
+        _packages = await PkgService.GetAllAsync();
+        _environments = await EnvService.GetActiveAsync();
+        _loading = false;
+    }
+
+    // ===== Filter functions for MudTable =====
+    private bool PkgFilter(Package p)
+    {
+        if (string.IsNullOrWhiteSpace(_pkgSearch)) return true;
+        return p.Name.Contains(_pkgSearch, StringComparison.OrdinalIgnoreCase)
+            || p.PackageType.Contains(_pkgSearch, StringComparison.OrdinalIgnoreCase)
+            || p.OriginalFileName.Contains(_pkgSearch, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool EnvFilter(Models.Environment e)
+    {
+        if (string.IsNullOrWhiteSpace(_envSearch)) return true;
+        return e.Name.Contains(_envSearch, StringComparison.OrdinalIgnoreCase)
+            || e.Url.Contains(_envSearch, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ===== Row click =====
+    private void OnPackageRowClick(TableRowClickEventArgs<Package> args)
+    {
+        if (args.Item == null) return;
+        if (_selectedPackageId == args.Item.Id)
+        {
+            _selectedPackageId = null;
+            _deployDevOpsUrl = "";
+        }
+        else
+        {
+            _selectedPackageId = args.Item.Id;
+            _deployDevOpsUrl = args.Item.DevOpsTaskUrl ?? "";
+        }
+    }
+
+    private void OnEnvRowClick(TableRowClickEventArgs<Models.Environment> args)
+    {
+        if (args.Item == null) return;
+        ToggleEnv(args.Item.Id, !_selectedEnvIds.Contains(args.Item.Id));
+    }
+
+    // ===== Row style =====
+    private string PkgRowClass(Package p, int _) => _selectedPackageId == p.Id ? "mud-theme-primary" : "";
+    private string EnvRowClass(Models.Environment e, int _) => _selectedEnvIds.Contains(e.Id) ? "mud-theme-primary" : "";
+
+    // ===== Selection =====
+    private void ToggleEnv(int id, bool sel) { if (sel) _selectedEnvIds.Add(id); else _selectedEnvIds.Remove(id); }
+    private void SelectAllEnvs() { foreach (var e in _environments) _selectedEnvIds.Add(e.Id); }
+    private void DeselectAllEnvs() => _selectedEnvIds.Clear();
+
+    // ===== Deploy =====
+    private async Task StartDeploy()
+    {
+        if (!_canDeploy) return;
+        _deploying = true;
+        StateHasChanged();
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var devOpsUrl = string.IsNullOrWhiteSpace(_deployDevOpsUrl) ? null : _deployDevOpsUrl.Trim();
+            foreach (var envId in _selectedEnvIds)
+            {
+                var d = new Deployment
+                {
+                    PackageId = _selectedPackageId!.Value,
+                    EnvironmentId = envId,
+                    Status = DeploymentStatus.Queued,
+                    QueuedAt = DateTime.UtcNow,
+                    DevOpsTaskUrl = devOpsUrl
+                };
+                db.Deployments.Add(d);
+                await db.SaveChangesAsync();
+                await Orchestrator.EnqueueAsync(d.Id);
+            }
+            Snackbar.Add($"Queued for {_selectedEnvIds.Count} environment(s).", Severity.Success);
+            Nav.NavigateTo("/deployments");
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        finally { _deploying = false; }
+    }
+
+    // ===== Helpers =====
+    private static string FormatSize(long b)
+    {
+        if (b < 1024) return $"{b} B";
+        if (b < 1024 * 1024) return $"{b / 1024.0:F1} KB";
+        if (b < 1024L * 1024 * 1024) return $"{b / 1024.0 / 1024.0:F1} MB";
+        return $"{b / 1024.0 / 1024.0 / 1024.0:F2} GB";
+    }
+
+    private static Color PkgTypeColor(string t)
+    {
+        if (t == "Merged") return Color.Secondary;
+        if (t == "Unified") return Color.Success;
+        return Color.Default;
+    }
+}

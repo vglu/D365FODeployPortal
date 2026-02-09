@@ -1,0 +1,813 @@
+@page "/environments"
+@inject EnvironmentService EnvService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject IJSRuntime JS
+
+<PageTitle>Environments</PageTitle>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4">Environments</MudText>
+    <MudSpacer />
+    <MudButton Variant="Variant.Outlined" Color="Color.Warning"
+               StartIcon="@Icons.Material.Filled.Key"
+               OnClick="@(() => _spGuideDialogVisible = true)">
+        SP Setup Guide
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+               StartIcon="@Icons.Material.Filled.ContentPaste"
+               OnClick="@OpenImportDialog">
+        Import from Script
+    </MudButton>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary"
+               StartIcon="@Icons.Material.Filled.Add"
+               OnClick="@OpenAddDialog">
+        Add Environment
+    </MudButton>
+</MudStack>
+
+<MudTable Items="@_environments" Dense="true" Hover="true" Elevation="2" Loading="@_loading"
+          Filter="new Func<Models.Environment, bool>(EnvFilter)" FixedHeader="true"
+          Breakpoint="Breakpoint.None">
+    <ToolBarContent>
+        <MudSpacer />
+        <MudTextField @bind-Value="_searchText" Placeholder="Search..." Variant="Variant.Outlined"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" DebounceInterval="200" Margin="Margin.Dense"
+                      Clearable="true" Style="max-width:280px" />
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Name)" InitialDirection="SortDirection.Ascending">Name</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Url)">URL</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.TenantId)">Tenant ID</MudTableSortLabel></MudTh>
+        <MudTh>App ID</MudTh>
+        <MudTh>Secret</MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.IsActive)">Active</MudTableSortLabel></MudTh>
+        <MudTh Style="width:80px">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Name">@context.Name</MudTd>
+        <MudTd DataLabel="URL">
+            <span class="mud-text-secondary" style="font-size:0.85rem">@context.Url</span>
+        </MudTd>
+        <MudTd DataLabel="Tenant">@TruncateGuid(context.TenantId)</MudTd>
+        <MudTd DataLabel="AppId">@TruncateGuid(context.ApplicationId)</MudTd>
+        <MudTd DataLabel="Secret">@EnvService.GetMaskedSecret(context)</MudTd>
+        <MudTd DataLabel="Active">
+            <MudSwitch T="bool" Value="@context.IsActive" Color="Color.Success"
+                       ValueChanged="@(async _ => await ToggleActive(context))" />
+        </MudTd>
+        <MudTd>
+            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                           OnClick="@(() => OpenEditDialog(context))" />
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                           OnClick="@(() => DeleteEnvironment(context))" />
+        </MudTd>
+    </RowTemplate>
+</MudTable>
+
+@* ===== ADD/EDIT DIALOG ===== *@
+<MudDialog @bind-Visible="_dialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(_editingId.HasValue ? "Edit" : "Add") Environment</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_formName" Label="Name" Required="true" Class="mb-3" />
+        <MudTextField @bind-Value="_formUrl" Label="URL (e.g. myenv.crm.dynamics.com)" Required="true" Class="mb-3" />
+        <MudTextField @bind-Value="_formTenantId" Label="Tenant ID" Required="true" Class="mb-3" />
+        <MudTextField @bind-Value="_formApplicationId" Label="Application (Client) ID" Required="true" Class="mb-3" />
+        <MudTextField @bind-Value="_formClientSecret" Label="Client Secret" Required="@(!_editingId.HasValue)"
+                      InputType="InputType.Password"
+                      HelperText="@(_editingId.HasValue ? "Leave empty to keep current" : "")"
+                      Class="mb-3" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@CloseDialog">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@SaveEnvironment">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* ===== IMPORT DIALOG ===== *@
+<MudDialog @bind-Visible="_importDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true }">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.ContentPaste" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">Import from Script Output</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (!_importParsed)
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">
+                Paste the output of <code>Setup-ServicePrincipal.ps1</code> or the contents of
+                <code>ServicePrincipal_*.txt</code> file below. The parser will extract credentials and environment URLs.
+            </MudText>
+
+            <MudTextField @bind-Value="_importText" Label="Paste script output here"
+                          Variant="Variant.Outlined" Lines="10"
+                          Placeholder="Application (Client) ID:  xxxxxxxx-xxxx-...&#10;Directory (Tenant) ID:    xxxxxxxx-xxxx-...&#10;Client Secret:            xxxxxxxxxx...&#10;Environments (OK):        env1.crm.dynamics.com, env2.crm.dynamics.com"
+                          Class="mb-3" Style="font-family:monospace; font-size:0.85rem" />
+
+            <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
+                <MudFileUpload T="IBrowserFile" FilesChanged="@OnImportFileSelected" Accept=".txt,.log,.md">
+                    <ActivatorContent>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.FileOpen">
+                            Load from file
+                        </MudButton>
+                    </ActivatorContent>
+                </MudFileUpload>
+                <MudSpacer />
+                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="@ParseImportData"
+                           Disabled="@string.IsNullOrWhiteSpace(_importText)"
+                           StartIcon="@Icons.Material.Filled.AutoFixHigh">
+                    Parse
+                </MudButton>
+            </MudStack>
+        }
+        else if (_parsedData != null)
+        {
+            @* ===== PARSED DATA PREVIEW ===== *@
+            <MudText Typo="Typo.subtitle1" Class="mb-3" Color="Color.Success">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Class="mr-1" />
+                Data parsed successfully
+            </MudText>
+
+            <MudPaper Class="pa-3 mb-3" Elevation="0" Style="background:var(--mud-palette-background-gray)">
+                <MudSimpleTable Dense="true" Hover="false" Elevation="0" Style="background:transparent">
+                    <tbody>
+                        @if (!string.IsNullOrEmpty(_parsedData.ServicePrincipalName))
+                        {
+                            <tr><td style="width:180px"><strong>Service Principal</strong></td><td>@_parsedData.ServicePrincipalName</td></tr>
+                        }
+                        <tr>
+                            <td><strong>Application ID</strong></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(_parsedData.ApplicationId))
+                                {
+                                    <code>@_parsedData.ApplicationId</code>
+                                }
+                                else
+                                {
+                                    <MudText Color="Color.Error">Not found</MudText>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Tenant ID</strong></td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(_parsedData.TenantId))
+                                {
+                                    <code>@_parsedData.TenantId</code>
+                                }
+                                else
+                                {
+                                    <MudText Color="Color.Error">Not found</MudText>
+                                }
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>Client Secret</strong></td>
+                            <td>
+                                @if (_parsedData.HasSecret)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Found</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">Not found / masked</MudChip>
+                                }
+                            </td>
+                        </tr>
+                        @if (!string.IsNullOrEmpty(_parsedData.SecretExpiry))
+                        {
+                            <tr><td><strong>Secret Expiry</strong></td><td>@_parsedData.SecretExpiry</td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+
+            @if (_parsedData.HasEnvironments)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">
+                    Environments (@_parsedData.Environments.Count found) — select which to create:
+                </MudText>
+
+                <MudPaper Class="pa-2 mb-3" Elevation="0" Style="background:var(--mud-palette-background-gray); max-height:250px; overflow-y:auto;">
+                    @foreach (var env in _parsedData.Environments)
+                    {
+                        var existing = _environments.Any(e =>
+                            e.Url.Equals(env, StringComparison.OrdinalIgnoreCase));
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+                            <MudCheckBox T="bool" Value="@_selectedImportEnvs.Contains(env)"
+                                         ValueChanged="@(v => ToggleImportEnv(env, v))"
+                                         Disabled="@existing" Dense="true" Color="Color.Primary" />
+                            <MudText Typo="Typo.body2" Style="@(existing ? "text-decoration:line-through; opacity:0.5" : "")">
+                                @env
+                            </MudText>
+                            @if (existing)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">exists</MudChip>
+                            }
+                        </MudStack>
+                    }
+                </MudPaper>
+
+                <MudStack Row="true" Spacing="2" Class="mb-2">
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@SelectAllImportEnvs">Select all new</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@DeselectAllImportEnvs">Deselect all</MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                    No environment URLs detected. You can enter one manually below.
+                </MudAlert>
+                <MudTextField @bind-Value="_importManualUrl" Label="Environment URL"
+                              Placeholder="myenv.crm.dynamics.com" Variant="Variant.Outlined"
+                              Class="mb-3" />
+            }
+
+            @if (!_parsedData.HasSecret)
+            {
+                <MudTextField @bind-Value="_importManualSecret" Label="Client Secret (enter manually)"
+                              InputType="InputType.Password" Variant="Variant.Outlined"
+                              HelperText="Secret was not found in the pasted text. Enter it manually."
+                              Class="mb-3" />
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_importParsed)
+        {
+            <MudButton OnClick="@(() => { _importParsed = false; })">Back</MudButton>
+        }
+        <MudButton OnClick="@CloseImportDialog">Cancel</MudButton>
+        @if (_importParsed && _parsedData != null && _parsedData.HasCredentials)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@CreateFromImport"
+                       Disabled="@_importCreating"
+                       StartIcon="@Icons.Material.Filled.Add">
+                @if (_importCreating)
+                {
+                    @("Creating...")
+                }
+                else if (_selectedImportEnvs.Count > 0)
+                {
+                    @($"Create {_selectedImportEnvs.Count} environment(s)")
+                }
+                else if (!string.IsNullOrWhiteSpace(_importManualUrl))
+                {
+                    @("Create 1 environment")
+                }
+                else
+                {
+                    @("Create")
+                }
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@* ===== SP SETUP GUIDE DIALOG ===== *@
+<MudDialog @bind-Visible="_spGuideDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true }">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Key" Color="Color.Warning" />
+            <MudText Typo="Typo.h6">Service Principal Setup Guide</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+            @* ===== TAB 1: MANUAL INSTRUCTIONS ===== *@
+            <MudTabPanel Text="Manual Instructions" Icon="@Icons.Material.Filled.MenuBook">
+                <MudText Typo="Typo.body2" Class="mb-3">
+                    Follow these steps to create a Service Principal for automated D365FO package deployment via PAC CLI.
+                    The SP enables non-interactive authentication for deploying packages to Power Platform environments.
+                </MudText>
+
+                <MudTimeline TimelineAlign="TimelineAlign.Start" TimelinePosition="TimelinePosition.Start">
+                    @* Step 1 *@
+                    <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+                        <ItemContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Primary">Part 1: Register App in Entra ID</MudText>
+                            <MudText Typo="Typo.body2">
+                                Go to <strong>Azure Portal</strong> &rarr; <strong>Microsoft Entra ID</strong> &rarr; <strong>App registrations</strong> &rarr; <strong>New registration</strong>
+                            </MudText>
+                            <MudList T="string" Dense="true" Class="ml-n2">
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><strong>Name:</strong> <code>PAC-Deploy-Automation</code></MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><strong>Account types:</strong> Single tenant</MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><strong>Redirect URI:</strong> leave empty</MudListItem>
+                            </MudList>
+                            <MudText Typo="Typo.body2">Note down the <strong>Application (Client) ID</strong> and <strong>Directory (Tenant) ID</strong>.</MudText>
+                        </ItemContent>
+                    </MudTimelineItem>
+
+                    @* Step 2 *@
+                    <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+                        <ItemContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Primary">Part 2: Create Client Secret</MudText>
+                            <MudText Typo="Typo.body2">
+                                On the app page &rarr; <strong>Certificates &amp; secrets</strong> &rarr; <strong>New client secret</strong>
+                            </MudText>
+                            <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Text" Class="mt-1">
+                                Copy the <strong>Value</strong> immediately — it is only shown once!
+                            </MudAlert>
+                        </ItemContent>
+                    </MudTimelineItem>
+
+                    @* Step 3 *@
+                    <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+                        <ItemContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Primary">Part 3: Assign API Permissions</MudText>
+                            <MudText Typo="Typo.body2">
+                                <strong>API permissions</strong> &rarr; <strong>Add a permission</strong> &rarr; <strong>APIs my organization uses</strong> &rarr; search <strong>Dataverse</strong>
+                            </MudText>
+                            <MudList T="string" Dense="true" Class="ml-n2">
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">Select <strong>Delegated permissions</strong> &rarr; <strong>user_impersonation</strong></MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">Click <strong>Grant admin consent</strong> for your tenant</MudListItem>
+                            </MudList>
+                        </ItemContent>
+                    </MudTimelineItem>
+
+                    @* Step 4 *@
+                    <MudTimelineItem Color="Color.Primary" Size="Size.Small">
+                        <ItemContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Primary">Part 4: Register Application User in Power Platform</MudText>
+                            <MudText Typo="Typo.body2">
+                                For <strong>each target environment</strong>:
+                            </MudText>
+                            <MudList T="string" Dense="true" Class="ml-n2">
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><a href="https://admin.powerplatform.microsoft.com" target="_blank">Power Platform Admin Center</a> &rarr; select environment</MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><strong>Settings</strong> &rarr; <strong>Application users</strong> &rarr; <strong>+ New app user</strong></MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">Find <code>PAC-Deploy-Automation</code>, assign <strong>System Administrator</strong> role</MudListItem>
+                            </MudList>
+                        </ItemContent>
+                    </MudTimelineItem>
+
+                    @* Step 5 *@
+                    <MudTimelineItem Color="Color.Success" Size="Size.Small">
+                        <ItemContent>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Success">Part 5: Enter Credentials Here</MudText>
+                            <MudText Typo="Typo.body2">
+                                Use <strong>Add Environment</strong> or <strong>Import from Script</strong> button on this page to register your environments with the credentials.
+                            </MudText>
+                        </ItemContent>
+                    </MudTimelineItem>
+                </MudTimeline>
+
+                <MudDivider Class="my-3" />
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Verification command:</MudText>
+                <MudPaper Class="pa-3" Elevation="0" Style="background:var(--mud-palette-background-gray); font-family:monospace; font-size:0.85rem; white-space:pre-wrap; overflow-x:auto">pac auth create --applicationId "&lt;APP_ID&gt;" --clientSecret "&lt;SECRET&gt;" --tenant "&lt;TENANT_ID&gt;" --environment "&lt;ENV_URL&gt;"
+pac auth who</MudPaper>
+            </MudTabPanel>
+
+            @* ===== TAB 2: AUTOMATION SCRIPT ===== *@
+            <MudTabPanel Text="Automation Script" Icon="@Icons.Material.Filled.Terminal">
+                <MudText Typo="Typo.body2" Class="mb-3">
+                    This PowerShell script automates all steps above. It requires the following modules:
+                    <code>Az.Accounts</code>, <code>Az.Resources</code>, <code>Microsoft.PowerApps.Administration.PowerShell</code>
+                </MudText>
+
+                <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined" Class="mb-3">
+                    <strong>Prerequisites:</strong> Global Administrator or Application Administrator in Entra ID, System Administrator in Power Platform environments.
+                </MudAlert>
+
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Usage examples:</MudText>
+                <MudPaper Class="pa-3 mb-3" Elevation="0" Style="background:var(--mud-palette-background-gray); font-family:monospace; font-size:0.82rem; white-space:pre-wrap; overflow-x:auto"># Full setup — creates SP and registers in specified environments
+.\Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
+
+# Add a new environment to an existing SP
+.\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
+
+# Add multiple environments at once
+.\Setup-ServicePrincipal.ps1 -AddEnvironment "env-a.crm.dynamics.com","env-b.crm.dynamics.com"</MudPaper>
+
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Full script:</MudText>
+                <MudPaper Class="pa-3" Elevation="0" Style="background:var(--mud-palette-background-gray); font-family:monospace; font-size:0.78rem; white-space:pre-wrap; overflow-x:auto; max-height:400px; overflow-y:auto">@_setupScript</MudPaper>
+
+                <MudStack Row="true" Class="mt-3" Spacing="2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.ContentCopy"
+                               OnClick="@CopyScriptToClipboard">
+                        Copy Script
+                    </MudButton>
+                    <MudText Typo="Typo.caption" Class="align-self-center" Color="Color.Tertiary">
+                        Save as <code>Setup-ServicePrincipal.ps1</code> and run in PowerShell
+                    </MudText>
+                </MudStack>
+            </MudTabPanel>
+        </MudTabs>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _spGuideDialogVisible = false)">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    private List<Models.Environment> _environments = new();
+    private bool _loading = true;
+    private string _searchText = "";
+
+    // Add/Edit form
+    private bool _dialogVisible;
+    private int? _editingId;
+    private string _formName = "";
+    private string _formUrl = "";
+    private string _formTenantId = "";
+    private string _formApplicationId = "";
+    private string _formClientSecret = "";
+
+    // SP Setup Guide
+    private bool _spGuideDialogVisible;
+
+    // Import
+    private bool _importDialogVisible;
+    private string _importText = "";
+    private bool _importParsed;
+    private CredentialParser.ParsedCredentials? _parsedData;
+    private HashSet<string> _selectedImportEnvs = new(StringComparer.OrdinalIgnoreCase);
+    private string _importManualSecret = "";
+    private string _importManualUrl = "";
+    private bool _importCreating;
+
+    // ===== Lifecycle =====
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _environments = await EnvService.GetAllAsync();
+        _loading = false;
+    }
+
+    private bool EnvFilter(Models.Environment e)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText)) return true;
+        return e.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+            || e.Url.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+            || e.TenantId.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+            || e.ApplicationId.Contains(_searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ===== Add/Edit =====
+    private void OpenAddDialog()
+    {
+        _editingId = null;
+        _formName = _formUrl = _formTenantId = _formApplicationId = _formClientSecret = "";
+        _dialogVisible = true;
+    }
+
+    private void OpenEditDialog(Models.Environment env)
+    {
+        _editingId = env.Id;
+        _formName = env.Name;
+        _formUrl = env.Url;
+        _formTenantId = env.TenantId;
+        _formApplicationId = env.ApplicationId;
+        _formClientSecret = "";
+        _dialogVisible = true;
+    }
+
+    private void CloseDialog() => _dialogVisible = false;
+
+    private async Task SaveEnvironment()
+    {
+        if (string.IsNullOrWhiteSpace(_formName) || string.IsNullOrWhiteSpace(_formUrl))
+        {
+            Snackbar.Add("Name and URL are required.", Severity.Warning);
+            return;
+        }
+        try
+        {
+            if (_editingId.HasValue)
+            {
+                await EnvService.UpdateAsync(_editingId.Value, _formName, _formUrl, _formTenantId, _formApplicationId,
+                    string.IsNullOrEmpty(_formClientSecret) ? null : _formClientSecret);
+                Snackbar.Add("Environment updated.", Severity.Success);
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(_formClientSecret))
+                {
+                    Snackbar.Add("Client Secret is required.", Severity.Warning);
+                    return;
+                }
+                await EnvService.CreateAsync(_formName, _formUrl, _formTenantId, _formApplicationId, _formClientSecret);
+                Snackbar.Add("Environment added.", Severity.Success);
+            }
+            _dialogVisible = false;
+            await LoadData();
+        }
+        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+    }
+
+    // ===== Import =====
+    private void OpenImportDialog()
+    {
+        _importText = "";
+        _importParsed = false;
+        _parsedData = null;
+        _selectedImportEnvs.Clear();
+        _importManualSecret = "";
+        _importManualUrl = "";
+        _importCreating = false;
+        _importDialogVisible = true;
+    }
+
+    private void CloseImportDialog()
+    {
+        _importDialogVisible = false;
+    }
+
+    private async Task OnImportFileSelected(IBrowserFile file)
+    {
+        if (file == null) return;
+        try
+        {
+            using var reader = new StreamReader(file.OpenReadStream(maxAllowedSize: 1024 * 1024));
+            _importText = await reader.ReadToEndAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to read file: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private void ParseImportData()
+    {
+        _parsedData = CredentialParser.Parse(_importText);
+        _importParsed = true;
+
+        // Pre-select environments that don't already exist
+        _selectedImportEnvs.Clear();
+        if (_parsedData.HasEnvironments)
+        {
+            foreach (var env in _parsedData.Environments)
+            {
+                if (!_environments.Any(e => e.Url.Equals(env, StringComparison.OrdinalIgnoreCase)))
+                    _selectedImportEnvs.Add(env);
+            }
+        }
+    }
+
+    private void ToggleImportEnv(string url, bool selected)
+    {
+        if (selected) _selectedImportEnvs.Add(url);
+        else _selectedImportEnvs.Remove(url);
+    }
+
+    private void SelectAllImportEnvs()
+    {
+        if (_parsedData == null) return;
+        foreach (var env in _parsedData.Environments)
+        {
+            if (!_environments.Any(e => e.Url.Equals(env, StringComparison.OrdinalIgnoreCase)))
+                _selectedImportEnvs.Add(env);
+        }
+    }
+
+    private void DeselectAllImportEnvs() => _selectedImportEnvs.Clear();
+
+    private async Task CreateFromImport()
+    {
+        if (_parsedData == null || !_parsedData.HasCredentials) return;
+
+        var secret = _parsedData.HasSecret ? _parsedData.ClientSecret! : _importManualSecret;
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            Snackbar.Add("Client Secret is required. Enter it manually.", Severity.Warning);
+            return;
+        }
+
+        // Collect URLs to create
+        var urls = _selectedImportEnvs.ToList();
+        if (urls.Count == 0 && !string.IsNullOrWhiteSpace(_importManualUrl))
+        {
+            urls.Add(_importManualUrl.Trim());
+        }
+
+        if (urls.Count == 0)
+        {
+            Snackbar.Add("Select at least one environment to create.", Severity.Warning);
+            return;
+        }
+
+        _importCreating = true;
+        StateHasChanged();
+
+        var created = 0;
+        var errors = 0;
+
+        try
+        {
+            foreach (var url in urls)
+            {
+                try
+                {
+                    // Generate a human-readable name from the URL
+                    var name = GenerateEnvName(url);
+                    await EnvService.CreateAsync(name, url, _parsedData.TenantId!, _parsedData.ApplicationId!, secret);
+                    created++;
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Failed to create '{url}': {ex.Message}", Severity.Error);
+                    errors++;
+                }
+            }
+
+            if (created > 0)
+            {
+                Snackbar.Add($"{created} environment(s) created successfully!", Severity.Success);
+                _importDialogVisible = false;
+                await LoadData();
+            }
+        }
+        finally
+        {
+            _importCreating = false;
+        }
+    }
+
+    // ===== Other actions =====
+    private async Task ToggleActive(Models.Environment env)
+    {
+        await EnvService.ToggleActiveAsync(env.Id);
+        await LoadData();
+    }
+
+    private async Task DeleteEnvironment(Models.Environment env)
+    {
+        var result = await DialogService.ShowMessageBox("Delete Environment",
+            $"Are you sure you want to delete '{env.Name}'?",
+            yesText: "Delete", cancelText: "Cancel");
+        if (result == true)
+        {
+            await EnvService.DeleteAsync(env.Id);
+            Snackbar.Add("Environment deleted.", Severity.Info);
+            await LoadData();
+        }
+    }
+
+    // ===== SP Setup Guide =====
+    private const string _setupScript = @"#Requires -Modules Az.Accounts, Az.Resources, Microsoft.PowerApps.Administration.PowerShell
+
+<#
+.SYNOPSIS
+    Creates a Service Principal for automated D365FO package deployment via PAC CLI.
+.DESCRIPTION
+    Two modes:
+    - Full setup: creates SP + registers in all environments
+    - Add environment: only registers existing SP in a new environment
+.EXAMPLE
+    .\Setup-ServicePrincipal.ps1 -Environments ""env1.crm.dynamics.com"",""env2.crm.dynamics.com""
+.EXAMPLE
+    .\Setup-ServicePrincipal.ps1 -AddEnvironment ""new-env.crm.dynamics.com""
+#>
+
+[CmdletBinding(DefaultParameterSetName = ""FullSetup"")]
+param(
+    [Parameter()]
+    [string]$AppDisplayName = ""PAC-Deploy-Automation"",
+
+    [Parameter(ParameterSetName = ""FullSetup"")]
+    [int]$SecretExpirationMonths = 24,
+
+    [Parameter(ParameterSetName = ""FullSetup"")]
+    [string[]]$Environments = @(
+        # Replace with your actual Power Platform environment URLs
+        # ""your-env-01.crm.dynamics.com"",
+        # ""your-env-02.crm.dynamics.com""
+    ),
+
+    [Parameter(Mandatory, ParameterSetName = ""AddEnv"")]
+    [string[]]$AddEnvironment
+)
+
+$ErrorActionPreference = ""Stop""
+
+function Log {
+    param([string]$Message, [string]$Color = ""White"")
+    Write-Host ""$(Get-Date -Format 'HH:mm:ss') - $Message"" -ForegroundColor $Color
+}
+
+$isAddEnvMode = $PSCmdlet.ParameterSetName -eq ""AddEnv""
+
+if ($isAddEnvMode) {
+    Log ""Mode: ADD ENVIRONMENT to existing SP '$AppDisplayName'"" ""Cyan""
+} else {
+    Log ""Mode: FULL SETUP of SP '$AppDisplayName'"" ""Cyan""
+}
+
+# PART 1: Authenticate
+Log ""Signing in to Azure AD..."" ""Cyan""
+Connect-AzAccount | Out-Null
+$context = Get-AzContext
+$tenantId = $context.Tenant.Id
+Log ""Tenant: $tenantId"" ""Green""
+
+# PART 2: App Registration
+$existingApp = Get-AzADApplication -DisplayName $AppDisplayName -ErrorAction SilentlyContinue
+if ($isAddEnvMode) {
+    if (-not $existingApp) { Write-Error ""App not found. Run full setup first.""; exit 1 }
+    $app = $existingApp
+} else {
+    if ($existingApp) { $app = $existingApp }
+    else { $app = New-AzADApplication -DisplayName $AppDisplayName -SignInAudience ""AzureADMyOrg"" }
+}
+Log ""AppId: $($app.AppId)"" ""Green""
+
+# PART 3: Service Principal
+$sp = Get-AzADServicePrincipal -ApplicationId $app.AppId -ErrorAction SilentlyContinue
+if (-not $sp) {
+    if ($isAddEnvMode) { Write-Error ""SP not found. Run full setup first.""; exit 1 }
+    $sp = New-AzADServicePrincipal -ApplicationId $app.AppId
+    Log ""SP created."" ""Green""
+}
+
+# PART 4: Client Secret
+$clientSecret = $null
+if (-not $isAddEnvMode) {
+    $endDate = (Get-Date).AddMonths($SecretExpirationMonths)
+    $secret = New-AzADAppCredential -ApplicationId $app.AppId -EndDate $endDate
+    $clientSecret = $secret.SecretText
+    if (-not $clientSecret) { Write-Error ""Failed to get secret.""; exit 1 }
+    Log ""Secret created. Expires: $($endDate.ToString('yyyy-MM-dd'))"" ""Green""
+}
+
+# PART 5: Dataverse API Permission
+if (-not $isAddEnvMode) {
+    $dataverseAppId = ""00000007-0000-0000-c000-000000000000""
+    $userImpersonationId = ""78ce3f0f-a1ce-49c2-8cde-64b5c0896db4""
+    $ra = New-Object Microsoft.Azure.PowerShell.Cmdlets.Resources.MSGraph.Models.ApiV10.MicrosoftGraphResourceAccess
+    $ra.Id = $userImpersonationId; $ra.Type = ""Scope""
+    $req = New-Object Microsoft.Azure.PowerShell.Cmdlets.Resources.MSGraph.Models.ApiV10.MicrosoftGraphRequiredResourceAccess
+    $req.ResourceAppId = $dataverseAppId; $req.ResourceAccess = @($ra)
+    try { Update-AzADApplication -ApplicationId $app.AppId -RequiredResourceAccess @($req) }
+    catch { Log ""Add Dataverse permission manually."" ""Yellow"" }
+
+    $consentLink = ""https://login.microsoftonline.com/$tenantId/adminconsent?client_id=$($app.AppId)""
+    Log ""Grant admin consent: $consentLink"" ""Yellow""
+    Start-Process $consentLink
+    Read-Host ""Press Enter after granting consent""
+}
+
+# PART 6: Register in Power Platform
+$targetEnvs = if ($isAddEnvMode) { $AddEnvironment } else { $Environments }
+try { Add-PowerAppsAccount } catch { Log ""Connect to PPAC manually."" ""Red"" }
+
+foreach ($envUrl in $targetEnvs) {
+    try {
+        New-PowerAppManagementApp -ApplicationId $app.AppId -ErrorAction Stop
+        Log ""[OK] $envUrl"" ""Green""
+    } catch {
+        if ($_.Exception.Message -like ""*already exists*"") { Log ""[SKIP] $envUrl"" ""Yellow"" }
+        else { Log ""[FAIL] $envUrl - $($_.Exception.Message)"" ""Red"" }
+    }
+}
+
+# RESULT
+Write-Host ""`nApplication (Client) ID: $($app.AppId)"" -ForegroundColor White
+Write-Host ""Directory (Tenant) ID:   $tenantId"" -ForegroundColor White
+if ($clientSecret) {
+    Write-Host ""Client Secret:           $clientSecret"" -ForegroundColor White
+    Write-Host ""IMPORTANT: Save the Client Secret - it will not be shown again!"" -ForegroundColor Red
+}";
+
+    private async Task CopyScriptToClipboard()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _setupScript);
+            Snackbar.Add("Script copied to clipboard!", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy. Please select and copy manually.", Severity.Warning);
+        }
+    }
+
+    // ===== Helpers =====
+    private static string TruncateGuid(string guid)
+    {
+        if (string.IsNullOrEmpty(guid) || guid.Length <= 13) return guid;
+        return guid[..8] + "...";
+    }
+
+    private static string GenerateEnvName(string url)
+    {
+        // "cst-hfx-tst-01.crm.dynamics.com" -> "cst-hfx-tst-01"
+        var parts = url.Split('.');
+        if (parts.Length > 0)
+        {
+            var name = parts[0];
+            // Capitalize first letter, replace dashes with spaces for readability
+            return name.Length > 0
+                ? char.ToUpper(name[0]) + name[1..]
+                : url;
+        }
+        return url;
+    }
+}

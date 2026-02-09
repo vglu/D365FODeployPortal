@@ -1,0 +1,672 @@
+@page "/packages"
+@inject PackageService PkgService
+@inject MergeService MergeSvc
+@inject ConvertService ConvertSvc
+@inject BuiltInConvertService BuiltInConvertSvc
+@inject NavigationManager NavManager
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>Packages</PageTitle>
+
+@* Upload area *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+        <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">Upload Package</MudText>
+        <MudSpacer />
+        <MudSelect @bind-Value="_uploadType" Label="Package type" Variant="Variant.Outlined"
+                   Margin="Margin.Dense" Style="width:160px" Dense="true">
+            <MudSelectItem Value="@("Auto")">Auto-detect</MudSelectItem>
+            <MudSelectItem Value="@("LCS")">LCS</MudSelectItem>
+            <MudSelectItem Value="@("Unified")">Unified</MudSelectItem>
+            <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+        </MudSelect>
+        <MudFileUpload @ref="_fileUpload" T="IBrowserFile" FilesChanged="@OnFileSelected" Accept=".zip"
+                       MaximumFileCount="1" Hidden="true" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.CloudUpload"
+                   OnClick="@OpenFilePicker" Disabled="@_uploading">
+            @(_uploading ? "Uploading..." : "Select ZIP file")
+        </MudButton>
+    </MudStack>
+    <MudTextField @bind-Value="_uploadDevOpsUrl" Label="Azure DevOps Task URL (optional)"
+                  Placeholder="https://dev.azure.com/org/project/_workitems/edit/12345"
+                  Variant="Variant.Text" Margin="Margin.Dense" Class="mt-2"
+                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Link" />
+    @if (_uploading)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+    }
+    @if (!string.IsNullOrEmpty(_lastDetectedType))
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2" CloseIconClicked="@(() => _lastDetectedType = "")">
+            Auto-detected package type: <strong>@_lastDetectedType</strong>
+        </MudAlert>
+    }
+</MudPaper>
+
+@* Package table *@
+<MudTable @ref="_table" Items="@_packages" Dense="true" Hover="true" Elevation="2" Loading="@_loading"
+          MultiSelection="true" @bind-SelectedItems="_selectedForMerge" SelectOnRowClick="false"
+          Filter="new Func<Package, bool>(FilterFunc)" FixedHeader="true"
+          Breakpoint="Breakpoint.None">
+    <ToolBarContent>
+        <MudText Typo="Typo.h6">Packages</MudText>
+        @if (_selectedForMerge.Count >= 2)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.MergeType" Class="ml-3"
+                       OnClick="@MergeSelected" Disabled="@_merging">
+                @(_merging ? "Merging..." : $"Merge {_selectedForMerge.Count} packages")
+            </MudButton>
+        }
+        <MudSpacer />
+        <MudTextField @bind-Value="_searchText" Placeholder="Search..." Variant="Variant.Outlined"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" DebounceInterval="200" Margin="Margin.Dense"
+                      Clearable="true" Style="max-width:280px" />
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.Name)">Name</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.OriginalFileName)">File</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.PackageType)">Type</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.FileSizeBytes)">Size</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.UploadedAt)" InitialDirection="SortDirection.Descending">Uploaded</MudTableSortLabel></MudTh>
+        <MudTh Style="width:44px">
+            <MudTooltip Text="DevOps Task"><MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" /></MudTooltip>
+        </MudTh>
+        <MudTh Style="width:44px">
+            <MudTooltip Text="License Files"><MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" /></MudTooltip>
+        </MudTh>
+        <MudTh Style="width:90px">Actions</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="Name">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                @if ((context.PackageType == "Merged" || context.ParentMergeFromId.HasValue) && !string.IsNullOrEmpty(context.MergeSourceNames))
+                {
+                    <MudIconButton Icon="@(_expandedRows.Contains(context.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                   Size="Size.Small" OnClick="@(() => ToggleExpand(context.Id))"
+                                   Title="Show source packages" />
+                }
+                <span>@context.Name</span>
+            </MudStack>
+        </MudTd>
+        <MudTd DataLabel="File">
+            <span class="mud-text-secondary" style="font-size:0.85rem">@context.OriginalFileName</span>
+        </MudTd>
+        <MudTd DataLabel="Type">
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                     Color="@PkgTypeColor(context.PackageType)">
+                @context.PackageType
+            </MudChip>
+        </MudTd>
+        <MudTd DataLabel="Size">@FormatSize(context.FileSizeBytes)</MudTd>
+        <MudTd DataLabel="Uploaded">
+            <MudTooltip Text="@context.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                <span>@context.UploadedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+            </MudTooltip>
+        </MudTd>
+        <MudTd Style="text-align:center">
+            @if (!string.IsNullOrEmpty(context.DevOpsTaskUrl))
+            {
+                <MudTooltip Text="@context.DevOpsTaskUrl">
+                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Info"
+                                   Href="@context.DevOpsTaskUrl" Target="_blank" />
+                </MudTooltip>
+            }
+        </MudTd>
+        <MudTd Style="text-align:center">
+            @if (HasLicenseFiles(context))
+            {
+                <MudTooltip Text="@GetLicenseTooltip(context)">
+                    <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" Color="Color.Warning" />
+                </MudTooltip>
+            }
+        </MudTd>
+        <MudTd>
+            <MudStack Row="true" Spacing="0">
+                @* Download button *@
+                <MudTooltip Text="Download">
+                    <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Primary"
+                                   OnClick="@(() => DownloadPackage(context))" />
+                </MudTooltip>
+                @* Actions menu *@
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small"
+                         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+                    @if (context.PackageType == "LCS" || context.PackageType == "Merged")
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.Transform"
+                                     OnClick="@(() => ConvertToUnified(context))"
+                                     Disabled="@(_converting.Contains(context.Id))">
+                            @if (_converting.Contains(context.Id))
+                            {
+                                @("Converting...")
+                            }
+                            else
+                            {
+                                @("Convert to Unified")
+                            }
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.FileDownload"
+                                     OnClick="@(() => ConvertAndDownload(context, "Unified"))"
+                                     Disabled="@(_converting.Contains(context.Id))">
+                            Download as Unified
+                        </MudMenuItem>
+                        <MudDivider />
+                    }
+                    @if (context.PackageType == "Unified")
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.Transform"
+                                     OnClick="@(() => ConvertToLcs(context))"
+                                     Disabled="@(_converting.Contains(context.Id))">
+                            @if (_converting.Contains(context.Id))
+                            {
+                                @("Converting...")
+                            }
+                            else
+                            {
+                                @("Convert to LCS")
+                            }
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.FileDownload"
+                                     OnClick="@(() => ConvertAndDownload(context, "LCS"))"
+                                     Disabled="@(_converting.Contains(context.Id))">
+                            Download as LCS
+                        </MudMenuItem>
+                        <MudDivider />
+                    }
+                    <MudMenuItem Icon="@Icons.Material.Filled.UploadFile"
+                                 OnClick="@(() => OpenLicenseUpload(context))">
+                        Upload License Files
+                    </MudMenuItem>
+                    @if (HasLicenseFiles(context))
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.FileDownload"
+                                     OnClick="@(() => DownloadLicenses(context))">
+                            Download License Files
+                        </MudMenuItem>
+                    }
+                    <MudDivider />
+                    <MudMenuItem Icon="@Icons.Material.Filled.Link"
+                                 OnClick="@(() => EditDevOpsUrl(context))">
+                        Edit DevOps URL
+                    </MudMenuItem>
+                    <MudDivider />
+                    <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error"
+                                 OnClick="@(() => DeletePackage(context))">
+                        Delete
+                    </MudMenuItem>
+                </MudMenu>
+            </MudStack>
+        </MudTd>
+    </RowTemplate>
+    <ChildRowContent>
+        @if (!string.IsNullOrEmpty(context.MergeSourceNames) && _expandedRows.Contains(context.Id))
+        {
+            <MudTr>
+                <td colspan="9" style="padding:0">
+                    <MudPaper Class="pa-3 ma-2" Elevation="0"
+                              Style="background:var(--mud-palette-background-gray)">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                            @if (context.PackageType == "Merged")
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.MergeType" Size="Size.Small" Color="Color.Secondary" />
+                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Merged from:</MudText>
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Transform" Size="Size.Small" Color="Color.Info" />
+                                <MudText Typo="Typo.subtitle2" Color="Color.Info">Converted from:</MudText>
+                            }
+                        </MudStack>
+                        <MudStack Spacing="1">
+                            @foreach (var sourceName in GetMergeSourceNames(context))
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                    <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Small" />
+                                    <MudText Typo="Typo.body2">@sourceName</MudText>
+                                </MudStack>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                </td>
+            </MudTr>
+        }
+    </ChildRowContent>
+    <NoRecordsContent>
+        <MudText Color="Color.Warning" Class="pa-4">No packages uploaded yet.</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@* Merge name dialog *@
+<MudDialog @bind-Visible="_mergeDialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.MergeType" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">Merge Packages</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_mergeStrategy != null)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                @if (_mergeStrategy == "LCS")
+                {
+                    <span><strong>LCS Merge</strong> — AOSService contents + HotfixInstallationInfo.xml will be combined</span>
+                }
+                else
+                {
+                    <span><strong>UDE Merge</strong> — folder contents will be combined + ImportConfig.xml updated</span>
+                }
+            </MudAlert>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3">
+                <strong>Incompatible package types!</strong> Cannot merge LCS and Unified packages together.
+                Select packages of the same type.
+            </MudAlert>
+        }
+
+        <MudText Typo="Typo.body2" Class="mb-3">
+            Merging @_mergePackages.Count packages:
+        </MudText>
+        <MudList T="string" Dense="true">
+            @foreach (var pkg in _mergePackages)
+            {
+                <MudListItem T="string" Icon="@Icons.Material.Filled.Inventory2" IconColor="Color.Primary">
+                    @pkg.Name
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                             Color="@PkgTypeColor(pkg.PackageType)" Class="ml-2">
+                        @pkg.PackageType
+                    </MudChip>
+                    <span class="mud-text-secondary ml-1">(@FormatSize(pkg.FileSizeBytes))</span>
+                </MudListItem>
+            }
+        </MudList>
+        <MudTextField @bind-Value="_mergeName" Label="Merged package name" Variant="Variant.Outlined"
+                      Class="mt-4" Required="true" Immediate="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _mergeDialogVisible = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="@ConfirmMerge"
+                   Disabled="@(string.IsNullOrWhiteSpace(_mergeName) || _merging || _mergeStrategy == null)"
+                   StartIcon="@Icons.Material.Filled.MergeType">
+            @if (_merging)
+            {
+                @("Merging...")
+            }
+            else if (_mergeStrategy != null)
+            {
+                @($"Merge ({_mergeStrategy})")
+            }
+            else
+            {
+                @("Merge")
+            }
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* DevOps URL edit dialog *@
+<MudDialog @bind-Visible="_devOpsDialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Link" Color="Color.Info" />
+            <MudText Typo="Typo.h6">Edit DevOps Task URL</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_devOpsDialogUrl" Label="Azure DevOps Task URL"
+                      Placeholder="https://dev.azure.com/org/project/_workitems/edit/12345"
+                      Variant="Variant.Outlined" Immediate="true" Class="mt-2"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Link"
+                      Clearable="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => _devOpsDialogVisible = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@SaveDevOpsUrl"
+                   StartIcon="@Icons.Material.Filled.Save">
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@* Hidden license file upload *@
+<MudFileUpload @ref="_licFileUpload" T="IReadOnlyList<IBrowserFile>" FilesChanged="@OnLicenseFilesSelected"
+               Accept=".txt,.xml" Hidden="true" MaximumFileCount="20" />
+
+@code {
+    private MudTable<Package>? _table;
+    private MudFileUpload<IBrowserFile>? _fileUpload;
+    private MudFileUpload<IReadOnlyList<IBrowserFile>>? _licFileUpload;
+    private int? _licUploadTargetPkgId;
+    private List<Package> _packages = new();
+    private HashSet<Package> _selectedForMerge = new();
+    private HashSet<int> _expandedRows = new();
+    private bool _loading = true;
+    private bool _uploading;
+    private bool _merging;
+    private string _searchText = "";
+    private string _uploadType = "Auto";
+    private string _lastDetectedType = "";
+    private string _uploadDevOpsUrl = "";
+
+    private HashSet<int> _converting = new();
+
+    // Merge dialog
+    private bool _mergeDialogVisible;
+    private string _mergeName = "";
+    private string? _mergeStrategy;
+    private List<Package> _mergePackages = new();
+
+    private async Task OpenFilePicker()
+    {
+        if (_fileUpload != null)
+            await _fileUpload.OpenFilePickerAsync();
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadData();
+
+    private async Task LoadData()
+    {
+        _loading = true;
+        _packages = await PkgService.GetAllAsync();
+        _selectedForMerge.Clear();
+        _expandedRows.Clear();
+        _loading = false;
+    }
+
+    // ===== Filter =====
+    private bool FilterFunc(Package p)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText)) return true;
+        return p.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+            || p.OriginalFileName.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+            || p.PackageType.Contains(_searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ===== Expand/Collapse =====
+    private void ToggleExpand(int id)
+    {
+        if (!_expandedRows.Remove(id))
+            _expandedRows.Add(id);
+    }
+
+    private static List<string> GetMergeSourceNames(Package pkg)
+    {
+        if (string.IsNullOrEmpty(pkg.MergeSourceNames)) return new();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<string>>(pkg.MergeSourceNames) ?? new();
+        }
+        catch
+        {
+            return new() { pkg.MergeSourceNames };
+        }
+    }
+
+    // ===== Upload =====
+    private async Task OnFileSelected(IBrowserFile file)
+    {
+        if (file == null) return;
+        _uploading = true;
+        _lastDetectedType = "";
+        StateHasChanged();
+        try
+        {
+            string? typeOverride = _uploadType == "Auto" ? null : _uploadType;
+            string? devOpsUrl = string.IsNullOrWhiteSpace(_uploadDevOpsUrl) ? null : _uploadDevOpsUrl;
+            using var stream = file.OpenReadStream(maxAllowedSize: 2L * 1024 * 1024 * 1024);
+            var pkg = await PkgService.UploadAsync(file.Name, stream, typeOverride, devOpsUrl);
+            if (_uploadType == "Auto")
+                _lastDetectedType = pkg.PackageType;
+            _uploadDevOpsUrl = "";
+            Snackbar.Add($"'{file.Name}' uploaded as {pkg.PackageType}.", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex) { Snackbar.Add($"Upload failed: {ex.Message}", Severity.Error); }
+        finally { _uploading = false; }
+    }
+
+    // ===== Merge =====
+    private void MergeSelected()
+    {
+        _mergePackages = _selectedForMerge.OrderBy(p => p.UploadedAt).ToList();
+        _mergeStrategy = MergeService.DetectMergeStrategy(_mergePackages);
+        _mergeName = $"Merged_{string.Join("_", _mergePackages.Select(p => p.Name.Replace(" ", "")))}";
+        if (_mergeName.Length > 100)
+            _mergeName = $"Merged_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
+        _mergeDialogVisible = true;
+    }
+
+    private async Task ConfirmMerge()
+    {
+        if (string.IsNullOrWhiteSpace(_mergeName)) return;
+        _merging = true;
+        StateHasChanged();
+        try
+        {
+            await MergeSvc.MergePackagesAsync(_mergePackages, _mergeName.Trim());
+            Snackbar.Add("Packages merged successfully!", Severity.Success);
+            _mergeDialogVisible = false;
+            await LoadData();
+        }
+        catch (Exception ex) { Snackbar.Add($"Merge failed: {ex.Message}", Severity.Error); }
+        finally { _merging = false; }
+    }
+
+    // ===== Download =====
+    private async Task DownloadPackage(Package pkg)
+    {
+        var url = $"/api/packages/{pkg.Id}/download";
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    // ===== Convert to Unified =====
+    private async Task ConvertToUnified(Package pkg)
+    {
+        if (_converting.Contains(pkg.Id)) return;
+        _converting.Add(pkg.Id);
+        StateHasChanged();
+        try
+        {
+            Snackbar.Add($"Converting '{pkg.Name}' to Unified...", Severity.Info);
+            var result = await PkgService.ConvertToUnifiedAsync(
+                pkg, ConvertSvc, BuiltInConvertSvc,
+                msg => _logger_ConvertLog(msg));
+            Snackbar.Add($"Converted: '{result.Name}' ({FormatSize(result.FileSizeBytes)})", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Conversion failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _converting.Remove(pkg.Id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConvertToLcs(Package pkg)
+    {
+        if (_converting.Contains(pkg.Id)) return;
+        _converting.Add(pkg.Id);
+        StateHasChanged();
+        try
+        {
+            Snackbar.Add($"Converting '{pkg.Name}' to LCS...", Severity.Info);
+            var result = await PkgService.ConvertToLcsAsync(
+                pkg, BuiltInConvertSvc,
+                msg => _logger_ConvertLog(msg));
+            Snackbar.Add($"Converted: '{result.Name}' ({FormatSize(result.FileSizeBytes)})", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Conversion failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _converting.Remove(pkg.Id);
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConvertAndDownload(Package pkg, string targetFormat)
+    {
+        if (_converting.Contains(pkg.Id)) return;
+        _converting.Add(pkg.Id);
+        StateHasChanged();
+        try
+        {
+            Snackbar.Add($"Converting '{pkg.Name}' to {targetFormat} for download...", Severity.Info);
+
+            Package result;
+            if (targetFormat == "LCS")
+                result = await PkgService.ConvertToLcsAsync(pkg, BuiltInConvertSvc, msg => _logger_ConvertLog(msg));
+            else
+                result = await PkgService.ConvertToUnifiedAsync(pkg, ConvertSvc, BuiltInConvertSvc, msg => _logger_ConvertLog(msg));
+
+            Snackbar.Add($"Converted: '{result.Name}'. Starting download...", Severity.Success);
+            await LoadData();
+            var url = $"/api/packages/{result.Id}/download";
+            await JS.InvokeVoidAsync("open", url, "_blank");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Conversion failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _converting.Remove(pkg.Id);
+            StateHasChanged();
+        }
+    }
+
+    private void _logger_ConvertLog(string msg)
+    {
+        // Log conversion progress to console (Serilog picks it up)
+        Console.WriteLine(msg);
+    }
+
+    // ===== Edit DevOps URL =====
+    private bool _devOpsDialogVisible;
+    private string _devOpsDialogUrl = "";
+    private int _devOpsDialogPkgId;
+
+    private void EditDevOpsUrl(Package pkg)
+    {
+        _devOpsDialogPkgId = pkg.Id;
+        _devOpsDialogUrl = pkg.DevOpsTaskUrl ?? "";
+        _devOpsDialogVisible = true;
+    }
+
+    private async Task SaveDevOpsUrl()
+    {
+        await PkgService.UpdateDevOpsUrlAsync(_devOpsDialogPkgId, _devOpsDialogUrl);
+        _devOpsDialogVisible = false;
+        Snackbar.Add("DevOps URL updated.", Severity.Success);
+        await LoadData();
+    }
+
+    // ===== License Files =====
+    private static bool HasLicenseFiles(Package pkg) =>
+        !string.IsNullOrEmpty(pkg.LicenseFileNames);
+
+    private static string GetLicenseTooltip(Package pkg)
+    {
+        if (string.IsNullOrEmpty(pkg.LicenseFileNames)) return "";
+        try
+        {
+            var names = System.Text.Json.JsonSerializer.Deserialize<List<string>>(pkg.LicenseFileNames);
+            if (names == null || names.Count == 0) return "";
+            return $"License files: {string.Join(", ", names)}";
+        }
+        catch { return "Has license files"; }
+    }
+
+    private static List<string> GetLicenseFileNames(Package pkg)
+    {
+        if (string.IsNullOrEmpty(pkg.LicenseFileNames)) return new();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<string>>(pkg.LicenseFileNames) ?? new();
+        }
+        catch { return new(); }
+    }
+
+    private async Task OpenLicenseUpload(Package pkg)
+    {
+        _licUploadTargetPkgId = pkg.Id;
+        if (_licFileUpload != null)
+            await _licFileUpload.OpenFilePickerAsync();
+    }
+
+    private async Task OnLicenseFilesSelected(IReadOnlyList<IBrowserFile> files)
+    {
+        if (files == null || files.Count == 0 || !_licUploadTargetPkgId.HasValue) return;
+        var pkgId = _licUploadTargetPkgId.Value;
+        _licUploadTargetPkgId = null;
+
+        try
+        {
+            var licenseFiles = new List<(string FileName, byte[] Content)>();
+            foreach (var file in files)
+            {
+                using var ms = new MemoryStream();
+                using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+                await stream.CopyToAsync(ms);
+                licenseFiles.Add((file.Name, ms.ToArray()));
+            }
+
+            await PkgService.InjectLicenseFilesAsync(pkgId, licenseFiles);
+            Snackbar.Add($"{licenseFiles.Count} license file(s) uploaded.", Severity.Success);
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"License upload failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DownloadLicenses(Package pkg)
+    {
+        var url = $"/api/packages/{pkg.Id}/licenses";
+        await JS.InvokeVoidAsync("open", url, "_blank");
+    }
+
+    // ===== Delete =====
+    private async Task DeletePackage(Package pkg)
+    {
+        var result = await DialogService.ShowMessageBox("Delete Package",
+            $"Delete '{pkg.Name}'?", yesText: "Delete", cancelText: "Cancel");
+        if (result == true)
+        {
+            await PkgService.DeleteAsync(pkg.Id);
+            Snackbar.Add("Package deleted.", Severity.Info);
+            await LoadData();
+        }
+    }
+
+    // ===== Helpers =====
+    private static Color PkgTypeColor(string type)
+    {
+        if (type == "Merged") return Color.Secondary;
+        if (type == "Unified") return Color.Success;
+        if (type == "Other") return Color.Warning;
+        return Color.Default; // LCS
+    }
+
+    private static string FormatSize(long b)
+    {
+        if (b < 1024) return $"{b} B";
+        if (b < 1024 * 1024) return $"{b / 1024.0:F1} KB";
+        if (b < 1024L * 1024 * 1024) return $"{b / 1024.0 / 1024.0:F1} MB";
+        return $"{b / 1024.0 / 1024.0 / 1024.0:F2} GB";
+    }
+}

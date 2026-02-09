@@ -1,0 +1,51 @@
+# ============================================================
+# DeployPortal — Docker Compose
+# ============================================================
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Logs:    docker compose logs -f
+# Rebuild: docker compose up -d --build
+# ============================================================
+
+services:
+  deploy-portal:
+    image: vglu/d365fo-deploy-portal:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deploy-portal
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persistent data: database, user settings, encryption keys
+      - deploy-data:/app/data
+      # Uploaded packages
+      - deploy-packages:/app/packages
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - ASPNETCORE_ENVIRONMENT=Production
+      - DeployPortal__DatabasePath=/app/data/deploy-portal.db
+      - DeployPortal__PackageStoragePath=/app/packages
+      - DeployPortal__TempWorkingDir=/tmp/DeployPortal
+      - DeployPortal__DataProtectionKeysPath=/app/data/keys
+      - DeployPortal__ConverterEngine=BuiltIn
+      # Uncomment to change the port:
+      # - ASPNETCORE_URLS=http://+:8080
+      # Uncomment for Azure Functions processing mode:
+      # - DeployPortal__ProcessingMode=Azure
+      # - DeployPortal__AzureFunctionsUrl=https://my-func.azurewebsites.net
+      # - DeployPortal__AzureBlobConnectionString=...
+      # - DeployPortal__AzureFunctionKey=...
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  deploy-data:
+    name: deploy-portal-data
+  deploy-packages:
+    name: deploy-portal-packages

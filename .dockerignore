@@ -1,0 +1,43 @@
+# Build artifacts
+**/bin/
+**/obj/
+**/publish/
+**/out/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Git
+.git/
+.gitignore
+
+# Runtime data (not part of the image)
+**/Packages/
+**/logs/
+*.db
+*.db-shm
+*.db-wal
+usersettings.json
+
+# Test results
+**/TestResults/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Documentation (not needed in image)
+*.pdf
+Setup-ServicePrincipal.ps1
+Setup-ServicePrincipal-Manual.md
+check-prerequisites.ps1
+
+# PowerShell scripts (Windows-only)
+publish.ps1
+run.ps1
+test-*.ps1

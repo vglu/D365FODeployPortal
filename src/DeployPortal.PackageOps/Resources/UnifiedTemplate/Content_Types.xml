@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default ContentType="application/octet-stream" Extension="css"/>
+  <Default ContentType="application/octet-stream" Extension="csv"/>
+  <Default ContentType="application/octet-stream" Extension="dll"/>
+  <Default ContentType="application/octet-stream" Extension="gif"/>
+  <Default ContentType="application/octet-stream" Extension="htm"/>
+  <Default ContentType="application/octet-stream" Extension="html"/>
+  <Default ContentType="application/octet-stream" Extension="jpg"/>
+  <Default ContentType="application/octet-stream" Extension="png"/>
+  <Default ContentType="application/octet-stream" Extension="xls"/>
+  <Default ContentType="application/octet-stream" Extension="xlst"/>
+  <Default ContentType="application/octet-stream" Extension="xml"/>
+  <Default ContentType="application/octet-stream" Extension="zip"/>
+  <Default ContentType="application/octet-stream" Extension="cab"/>
+  <Default ContentType="application/octet-stream" Extension="json"/>
+</Types>
