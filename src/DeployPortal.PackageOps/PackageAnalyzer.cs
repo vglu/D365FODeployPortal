@@ -83,6 +83,40 @@ public static class PackageAnalyzer
     }
 
     /// <summary>
+    /// Extracts module name from a .nupkg or similar filename (e.g. Dynamics.AX.ApplicationSuite.1.0.0.0.nupkg).
+    /// Removes extension, strips trailing version segments (digits/dots), then takes last segment after dot or full name.
+    /// </summary>
+    public static string ExtractModuleNameFromNupkg(string fileName)
+    {
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        if (string.IsNullOrEmpty(name)) return "unknown";
+
+        // Strip trailing version segments (e.g. .2026.1.14.2 or .1.0.0.0)
+        while (true)
+        {
+            var lastDot = name.LastIndexOf('.');
+            if (lastDot < 0) break;
+            var after = name[(lastDot + 1)..];
+            var allDigits = after.Length > 0;
+            for (int j = 0; j < after.Length && allDigits; j++)
+                allDigits = char.IsDigit(after[j]);
+            if (allDigits)
+                name = name[..lastDot];
+            else
+                break;
+        }
+
+        var lastSegmentDot = name.LastIndexOf('.');
+        if (lastSegmentDot >= 0 && lastSegmentDot < name.Length - 1)
+            name = name[(lastSegmentDot + 1)..];
+
+        if (name.StartsWith("dynamicsax-", StringComparison.OrdinalIgnoreCase))
+            return ExtractModuleName(name);
+
+        return string.IsNullOrEmpty(name) ? "unknown" : name.ToLowerInvariant();
+    }
+
+    /// <summary>
     /// Detects license file names inside a package (LCS or Unified).
     /// Returns a list of license file names (e.g. ["license1.txt", "license2.xml"]).
     /// </summary>

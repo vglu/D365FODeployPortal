@@ -6,7 +6,7 @@ namespace DeployPortal.Services;
 /// Built-in LCS ↔ Unified converter.
 /// Delegates to ConvertEngine from the shared PackageOps library.
 /// </summary>
-public class BuiltInConvertService
+public class BuiltInConvertService : IConvertService
 {
     private readonly ILogger<BuiltInConvertService> _logger;
     private readonly SettingsService _settings;

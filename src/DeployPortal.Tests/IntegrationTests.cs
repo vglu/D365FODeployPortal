@@ -108,6 +108,20 @@ public class IntegrationTests
     }
 
     [Test]
+    public void ExtractModuleNameFromNupkg_DynamicsAxStyle()
+    {
+        Assert.That(PackageAnalyzer.ExtractModuleNameFromNupkg("dynamicsax-sisheavyhighway.2026.1.14.2.nupkg"),
+            Is.EqualTo("sisheavyhighway"));
+    }
+
+    [Test]
+    public void ExtractModuleNameFromNupkg_DotStyle()
+    {
+        Assert.That(PackageAnalyzer.ExtractModuleNameFromNupkg("Dynamics.AX.ApplicationSuite.1.0.0.0.nupkg"),
+            Is.EqualTo("applicationsuite"));
+    }
+
+    [Test]
     public void ExtractModuleNameFromManagedZip_Standard()
     {
         Assert.That(PackageAnalyzer.ExtractModuleNameFromManagedZip("cch_sureaddress_1_0_0_1_managed.zip"),
@@ -404,6 +418,63 @@ Environments (FAIL):     ";
         Assert.That(modulesA, Does.Contain("ModB"));
 
         TestContext.Out.WriteLine("Pipeline comparison: PASSED");
+    }
+
+    // =====================================================
+    //  Реальный LCS-пакет: конвертация по пути из env (для диагностики)
+    // =====================================================
+
+    [Test]
+    public void ConvertRealLcsPackage_FromEnv()
+    {
+        var lcsPath = System.Environment.GetEnvironmentVariable("DeployPortal_TestLcsPackagePath");
+        if (string.IsNullOrWhiteSpace(lcsPath) || !File.Exists(lcsPath))
+        {
+            Assert.Ignore("Set DeployPortal_TestLcsPackagePath to a real LCS zip path to run this test.");
+            return;
+        }
+
+        var tempDir = Path.Combine(Path.GetTempPath(), $"convert_real_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var templateDir = Path.Combine(
+                Path.GetDirectoryName(GetType().Assembly.Location)!,
+                "..", "..", "..", "..", "DeployPortal", "bin", "Debug", "net9.0", "Resources", "UnifiedTemplate");
+            if (!Directory.Exists(templateDir))
+                templateDir = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "DeployPortal", "bin", "Debug", "net9.0", "Resources", "UnifiedTemplate");
+            Assert.That(Directory.Exists(templateDir), Is.True, "UnifiedTemplate must exist (build DeployPortal first)");
+
+            var engine = new ConvertEngine(tempDir, templateDir);
+            var logs = new List<string>();
+            var outputDir = engine.ConvertToUnifiedAsync(lcsPath, msg => logs.Add(msg)).GetAwaiter().GetResult();
+
+            foreach (var log in logs)
+                TestContext.Out.WriteLine(log);
+
+            Assert.That(Directory.Exists(outputDir), Is.True);
+            Assert.That(File.Exists(Path.Combine(outputDir, "TemplatePackage.dll")), Is.True);
+
+            var assetsDir = Path.Combine(outputDir, "PackageAssets");
+            var managedZips = Directory.Exists(assetsDir)
+                ? Directory.GetFiles(assetsDir, "*_managed.zip")
+                    .Where(f => !Path.GetFileName(f).Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase))
+                    .ToArray()
+                : Array.Empty<string>();
+
+            var totalSize = new DirectoryInfo(outputDir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length);
+            TestContext.Out.WriteLine($"Modules (managed zips): {managedZips.Length}");
+            TestContext.Out.WriteLine($"Unified output size: {totalSize / 1024} KB");
+            if (managedZips.Length == 0)
+            {
+                TestContext.Out.WriteLine("WARNING: 0 modules -> only template was written (~51 KB). Check that LCS package has AOSService/Packages/files/dynamicsax-*.zip or *.nupkg (or in AOSService/Packages/).");
+                Assert.Inconclusive("Real package produced 0 modules — see diagnostic output above. Run test-convert-real-package.ps1 to inspect ZIP structure.");
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
     }
 
     // =====================================================

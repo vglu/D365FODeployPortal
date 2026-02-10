@@ -52,8 +52,7 @@ public class DeploymentOrchestrator : BackgroundService
     {
         using var scope = _services.CreateScope();
         var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
-        var convertService = scope.ServiceProvider.GetRequiredService<ConvertService>();
-        var builtInConvertService = scope.ServiceProvider.GetRequiredService<BuiltInConvertService>();
+        var convertService = scope.ServiceProvider.GetRequiredService<IConvertService>();
         var deployService = scope.ServiceProvider.GetRequiredService<DeployService>();
         var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<DeployLogHub>>();
         var settingsService = scope.ServiceProvider.GetRequiredService<SettingsService>();
@@ -125,18 +124,9 @@ public class DeploymentOrchestrator : BackgroundService
 
                 Log($"Starting conversion {packageType} -> Unified (engine: {(useBuiltIn ? "Built-in" : "ModelUtil")})");
 
-                if (useBuiltIn)
-                {
-                    deployDir = await builtInConvertService.ConvertToUnifiedAsync(
-                        deployment.Package.StoredFilePath,
-                        msg => Log(msg));
-                }
-                else
-                {
-                    deployDir = await convertService.ConvertToUnifiedAsync(
-                        deployment.Package.StoredFilePath,
-                        msg => Log(msg));
-                }
+                deployDir = await convertService.ConvertToUnifiedAsync(
+                    deployment.Package.StoredFilePath,
+                    msg => Log(msg));
             }
 
             // Step 2: Deploy

@@ -76,29 +76,47 @@ public class ConvertEngine
             onLog?.Invoke("[Built-in] Writing template scaffold...");
             CopyTemplateFiles(outputDir, assetsDir);
 
-            // Process each module ZIP
+            // Process each module: look in AOSService/Packages/files/ (dynamicsax-*.zip and *.nupkg),
+            // then fallback to AOSService/Packages/ (same patterns) for AIO/alternative layouts
             var filesDir = Path.Combine(tempDir, "AOSService", "Packages", "files");
+            var packagesDir = Path.Combine(tempDir, "AOSService", "Packages");
             var managedZipNames = new List<string>();
             var correlationId = Guid.NewGuid().ToString();
             var timestamp = DateTime.UtcNow.ToString("M/d/yyyy h:mm:ss tt");
             var licenseGuid = Guid.NewGuid().ToString();
 
+            var moduleArchives = new List<(string FilePath, string ModuleName)>();
+
             if (Directory.Exists(filesDir))
             {
-                var moduleZips = Directory.GetFiles(filesDir, "dynamicsax-*.zip");
-                onLog?.Invoke($"[Built-in] Found {moduleZips.Length} module archives to convert");
+                foreach (var z in Directory.GetFiles(filesDir, "dynamicsax-*.zip"))
+                    moduleArchives.Add((z, PackageAnalyzer.ExtractModuleName(Path.GetFileNameWithoutExtension(z))));
+                foreach (var n in Directory.GetFiles(filesDir, "*.nupkg"))
+                    moduleArchives.Add((n, PackageAnalyzer.ExtractModuleNameFromNupkg(Path.GetFileName(n))));
+            }
 
-                var moduleInfos = moduleZips
-                    .Select(z => new { Path = z, Name = PackageAnalyzer.ExtractModuleName(Path.GetFileNameWithoutExtension(z)) })
-                    .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+            if (moduleArchives.Count == 0 && Directory.Exists(packagesDir))
+            {
+                onLog?.Invoke("[Built-in] AOSService/Packages/files/ empty or missing, trying AOSService/Packages/...");
+                foreach (var z in Directory.GetFiles(packagesDir, "dynamicsax-*.zip"))
+                    moduleArchives.Add((z, PackageAnalyzer.ExtractModuleName(Path.GetFileNameWithoutExtension(z))));
+                foreach (var n in Directory.GetFiles(packagesDir, "*.nupkg"))
+                    moduleArchives.Add((n, PackageAnalyzer.ExtractModuleNameFromNupkg(Path.GetFileName(n))));
+            }
 
-                for (int i = 0; i < moduleInfos.Count; i++)
+            moduleArchives = moduleArchives
+                .OrderBy(m => m.ModuleName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (moduleArchives.Count > 0)
+            {
+                onLog?.Invoke($"[Built-in] Found {moduleArchives.Count} module archive(s) to convert");
+
+                for (int i = 0; i < moduleArchives.Count; i++)
                 {
-                    var moduleZipPath = moduleInfos[i].Path;
-                    var moduleName = moduleInfos[i].Name;
+                    var (moduleZipPath, moduleName) = moduleArchives[i];
 
-                    onLog?.Invoke($"[Built-in] [{i + 1}/{moduleInfos.Count}] {moduleName}");
+                    onLog?.Invoke($"[Built-in] [{i + 1}/{moduleArchives.Count}] {moduleName}");
 
                     var managedZipName = $"{moduleName}_1_0_0_1_managed.zip";
                     var managedZipPath = Path.Combine(assetsDir, managedZipName);
@@ -115,11 +133,11 @@ public class ConvertEngine
                 }
 
                 if (licenseFiles.Count > 0)
-                    onLog?.Invoke($"[Built-in] Added {licenseFiles.Count} license(s) to {moduleInfos[0].Name}");
+                    onLog?.Invoke($"[Built-in] Added {licenseFiles.Count} license(s) to {moduleArchives[0].ModuleName}");
             }
             else
             {
-                onLog?.Invoke("[Built-in] Warning: AOSService/Packages/files/ not found");
+                onLog?.Invoke("[Built-in] Warning: No dynamicsax-*.zip or *.nupkg found in AOSService/Packages/files/ or AOSService/Packages/");
             }
 
             // Generate ImportConfig.xml

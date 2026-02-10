@@ -4,9 +4,9 @@ namespace DeployPortal.Services;
 
 /// <summary>
 /// LCS → Unified conversion using external ModelUtil.exe.
-/// Delegates to ModelUtilConvertEngine from the shared PackageOps library.
+/// Only ConvertToUnified is supported; ConvertToLcs throws (use BuiltIn for reverse).
 /// </summary>
-public class ConvertService
+public class ConvertService : IConvertService
 {
     private readonly SettingsService _settings;
     private readonly ILogger<ConvertService> _logger;
@@ -24,5 +24,10 @@ public class ConvertService
         var result = await engine.ConvertToUnifiedAsync(lcsPackagePath, onLog);
         _logger.LogInformation("ModelUtil conversion: {File}", Path.GetFileName(lcsPackagePath));
         return result;
+    }
+
+    public Task<string> ConvertToLcsAsync(string unifiedPackagePath, Action<string>? onLog = null)
+    {
+        throw new NotSupportedException("ModelUtil does not support Unified → LCS; use built-in converter.");
     }
 }

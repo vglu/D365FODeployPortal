@@ -1,8 +1,6 @@
 @page "/packages"
 @inject PackageService PkgService
 @inject MergeService MergeSvc
-@inject ConvertService ConvertSvc
-@inject BuiltInConvertService BuiltInConvertSvc
 @inject NavigationManager NavManager
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
@@ -72,7 +70,7 @@
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.Name)">Name</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.OriginalFileName)">File</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.PackageType)">Type</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.FileSizeBytes)">Size</MudTableSortLabel></MudTh>
+        <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.FileSizeBytes)">Размер</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.UploadedAt)" InitialDirection="SortDirection.Descending">Uploaded</MudTableSortLabel></MudTh>
         <MudTh Style="width:44px">
             <MudTooltip Text="DevOps Task"><MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" /></MudTooltip>
@@ -103,7 +101,7 @@
                 @context.PackageType
             </MudChip>
         </MudTd>
-        <MudTd DataLabel="Size">@FormatSize(context.FileSizeBytes)</MudTd>
+        <MudTd DataLabel="Размер">@FormatSize(context.FileSizeBytes)</MudTd>
         <MudTd DataLabel="Uploaded">
             <MudTooltip Text="@context.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
                 <span>@context.UploadedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
@@ -475,9 +473,7 @@
         try
         {
             Snackbar.Add($"Converting '{pkg.Name}' to Unified...", Severity.Info);
-            var result = await PkgService.ConvertToUnifiedAsync(
-                pkg, ConvertSvc, BuiltInConvertSvc,
-                msg => _logger_ConvertLog(msg));
+            var result = await PkgService.ConvertToUnifiedAsync(pkg, msg => _logger_ConvertLog(msg));
             Snackbar.Add($"Converted: '{result.Name}' ({FormatSize(result.FileSizeBytes)})", Severity.Success);
             await LoadData();
         }
@@ -500,9 +496,7 @@
         try
         {
             Snackbar.Add($"Converting '{pkg.Name}' to LCS...", Severity.Info);
-            var result = await PkgService.ConvertToLcsAsync(
-                pkg, BuiltInConvertSvc,
-                msg => _logger_ConvertLog(msg));
+            var result = await PkgService.ConvertToLcsAsync(pkg, msg => _logger_ConvertLog(msg));
             Snackbar.Add($"Converted: '{result.Name}' ({FormatSize(result.FileSizeBytes)})", Severity.Success);
             await LoadData();
         }
@@ -528,9 +522,9 @@
 
             Package result;
             if (targetFormat == "LCS")
-                result = await PkgService.ConvertToLcsAsync(pkg, BuiltInConvertSvc, msg => _logger_ConvertLog(msg));
+                result = await PkgService.ConvertToLcsAsync(pkg, msg => _logger_ConvertLog(msg));
             else
-                result = await PkgService.ConvertToUnifiedAsync(pkg, ConvertSvc, BuiltInConvertSvc, msg => _logger_ConvertLog(msg));
+                result = await PkgService.ConvertToUnifiedAsync(pkg, msg => _logger_ConvertLog(msg));
 
             Snackbar.Add($"Converted: '{result.Name}'. Starting download...", Severity.Success);
             await LoadData();

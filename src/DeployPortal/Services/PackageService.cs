@@ -14,12 +14,18 @@ public class PackageService
 {
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly SettingsService _settings;
+    private readonly IConvertService _convertService;
     private readonly ILogger<PackageService> _logger;
 
-    public PackageService(IDbContextFactory<AppDbContext> dbFactory, SettingsService settings, ILogger<PackageService> logger)
+    public PackageService(
+        IDbContextFactory<AppDbContext> dbFactory,
+        SettingsService settings,
+        IConvertService convertService,
+        ILogger<PackageService> logger)
     {
         _dbFactory = dbFactory;
         _settings = settings;
+        _convertService = convertService;
         _logger = logger;
     }
 
@@ -100,11 +106,7 @@ public class PackageService
     /// <summary>
     /// Converts an LCS/Merged package to Unified format using the configured converter engine.
     /// </summary>
-    public async Task<Package> ConvertToUnifiedAsync(
-        Package sourcePackage,
-        ConvertService convertService,
-        BuiltInConvertService builtInConvertService,
-        Action<string>? onLog = null)
+    public async Task<Package> ConvertToUnifiedAsync(Package sourcePackage, Action<string>? onLog = null)
     {
         if (sourcePackage.PackageType != "LCS" && sourcePackage.PackageType != "Merged")
             throw new InvalidOperationException($"Cannot convert {sourcePackage.PackageType} package to Unified.");
@@ -120,19 +122,7 @@ public class PackageService
             var tempZip = Path.Combine(tempDir, Path.GetFileName(sourcePackage.StoredFilePath));
             File.Copy(sourcePackage.StoredFilePath, tempZip);
 
-            string outputDir;
-            var useBuiltIn = _settings.ConverterEngine.Equals("BuiltIn", StringComparison.OrdinalIgnoreCase);
-
-            if (useBuiltIn)
-            {
-                onLog?.Invoke("Using built-in converter...");
-                outputDir = await builtInConvertService.ConvertToUnifiedAsync(tempZip, onLog);
-            }
-            else
-            {
-                onLog?.Invoke("Using ModelUtil.exe...");
-                outputDir = await convertService.ConvertToUnifiedAsync(tempZip, onLog);
-            }
+            var outputDir = await _convertService.ConvertToUnifiedAsync(tempZip, onLog);
 
             Directory.CreateDirectory(StoragePath);
             var outputName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{sourcePackage.Name}_Unified.zip";
@@ -171,10 +161,7 @@ public class PackageService
     /// <summary>
     /// Converts a Unified package to LCS format.
     /// </summary>
-    public async Task<Package> ConvertToLcsAsync(
-        Package sourcePackage,
-        BuiltInConvertService builtInConvertService,
-        Action<string>? onLog = null)
+    public async Task<Package> ConvertToLcsAsync(Package sourcePackage, Action<string>? onLog = null)
     {
         if (sourcePackage.PackageType != "Unified")
             throw new InvalidOperationException($"Cannot convert {sourcePackage.PackageType} to LCS.");
@@ -191,7 +178,7 @@ public class PackageService
             File.Copy(sourcePackage.StoredFilePath, tempZip);
 
             onLog?.Invoke("Converting Unified → LCS...");
-            var outputDir = await builtInConvertService.ConvertToLcsAsync(tempZip, onLog);
+            var outputDir = await _convertService.ConvertToLcsAsync(tempZip, onLog);
 
             Directory.CreateDirectory(StoragePath);
             var outputName = $"{DateTime.UtcNow:yyyyMMdd_HHmmss}_{sourcePackage.Name}_LCS.zip";

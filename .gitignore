@@ -15,7 +15,7 @@ publish/
 
 ## IDE
 .vs/
-.vscode/
+
 .idea/
 *.swp
 *~

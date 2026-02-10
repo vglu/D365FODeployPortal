@@ -53,6 +53,7 @@ try
     builder.Services.AddScoped<MergeService>();
     builder.Services.AddScoped<ConvertService>();
     builder.Services.AddScoped<BuiltInConvertService>();
+    builder.Services.AddScoped<IConvertService, CompositeConvertService>();
     builder.Services.AddScoped<DeployService>();
 
     // IPackageOpsService — switches between Local and Azure based on Settings → ProcessingMode
