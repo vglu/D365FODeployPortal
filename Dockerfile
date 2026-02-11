@@ -4,6 +4,11 @@
 # Build:   docker build -t d365fo-deploy-portal .
 # Run:     docker run -p 5000:5000 -v deploy-data:/app/data -v deploy-packages:/app/packages d365fo-deploy-portal
 # Compose: docker compose up -d
+#
+# CLI conversion (no web server):
+#   docker run --rm -v /path/to/packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip /data/MyUnified.zip
+#   docker run --rm -v C:\Downloads:/data vglu/d365fo-deploy-portal:latest convert /data/package.zip
+#     (creates /data/package_Unified.zip)
 # ============================================================
 
 # ── Stage 1: Build ───────────────────────────────────────────
@@ -19,9 +24,17 @@ COPY src/DeployPortal.Tests/DeployPortal.Tests.csproj src/DeployPortal.Tests/
 
 # Restore dependencies (cached unless .csproj files change)
 RUN dotnet restore src/DeployPortal/DeployPortal.csproj
+RUN dotnet restore src/DeployPortal.Tests/DeployPortal.Tests.csproj
 
-# Copy everything else and publish
+# Copy everything else
 COPY . .
+
+# Run LCS→Unified conversion test (nested root) to verify converter works in Linux container
+RUN dotnet build src/DeployPortal.Tests/DeployPortal.Tests.csproj -c Release --no-restore && \
+    dotnet test src/DeployPortal.Tests/DeployPortal.Tests.csproj -c Release \
+      --filter "FullyQualifiedName~ConvertToUnified_NestedLcsRoot_FindsModules" --no-build -v minimal
+
+# Publish main app
 RUN dotnet publish src/DeployPortal/DeployPortal.csproj \
     -c Release \
     -o /app/publish \
@@ -62,6 +75,8 @@ ENV DeployPortal__PackageStoragePath=/app/packages
 ENV DeployPortal__TempWorkingDir=/tmp/DeployPortal
 ENV DeployPortal__DataProtectionKeysPath=/app/data/keys
 ENV DeployPortal__ConverterEngine=BuiltIn
+# Full LCS template for Unified→LCS (ImportISVLicense.zip from CustomDeployablePackage). Override with DeployPortal__LcsTemplatePath if needed.
+ENV DeployPortal__LcsTemplatePath=/app/Resources/LcsTemplate/ImportISVLicense.zip
 
 # Volumes for persistent data
 VOLUME ["/app/data", "/app/packages"]

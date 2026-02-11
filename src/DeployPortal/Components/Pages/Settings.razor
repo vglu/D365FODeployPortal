@@ -94,6 +94,12 @@
                       HelperText="Path to ModelUtil.exe. Auto-detected from %LOCALAPPDATA%\Microsoft\Dynamics365 if available."
                       Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.FolderOpen" />
     }
+
+    <MudTextField @bind-Value="_lcsTemplatePath" Label="LCS Template (Unified→LCS)"
+                  Variant="Variant.Outlined" Class="mb-3"
+                  Placeholder="C:\Templates\LcsSkeleton.zip or folder path"
+                  HelperText="Optional. Folder or .zip with full LCS structure (AOSService, exe, DLLs, Scripts). When set, conversion Unified→LCS uses it as skeleton so the result matches original LCS layout. Leave empty for minimal output."
+                  Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.FolderOpen" />
 </MudPaper>
 
 @* ===== PROCESSING MODE ===== *@
@@ -409,6 +415,7 @@
     private string _packageStoragePath = "";
     private string _tempWorkingDir = "";
     private string _databasePath = "";
+    private string _lcsTemplatePath = "";
     private bool _saving;
     private List<SettingsService.ToolStatus>? _toolStatus;
 
@@ -431,6 +438,7 @@
         _packageStoragePath = settings.GetValueOrDefault("PackageStoragePath", "");
         _tempWorkingDir = settings.GetValueOrDefault("TempWorkingDir", "");
         _databasePath = settings.GetValueOrDefault("DatabasePath", "");
+        _lcsTemplatePath = settings.GetValueOrDefault("LcsTemplatePath", "");
     }
 
     private void RefreshStatus()
@@ -454,7 +462,8 @@
                 ["PacCliPath"] = _pacCliPath.Trim(),
                 ["PackageStoragePath"] = _packageStoragePath.Trim(),
                 ["TempWorkingDir"] = _tempWorkingDir.Trim(),
-                ["DatabasePath"] = _databasePath.Trim()
+                ["DatabasePath"] = _databasePath.Trim(),
+                ["LcsTemplatePath"] = _lcsTemplatePath.Trim()
             };
 
             SettingsSvc.SaveSettings(settings);

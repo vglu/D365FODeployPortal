@@ -4,10 +4,10 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.1.0</Version>
-    <AssemblyVersion>1.1.0.0</AssemblyVersion>
-    <FileVersion>1.1.0.0</FileVersion>
-    <InformationalVersion>1.1.0</InformationalVersion>
+    <Version>1.2.5</Version>
+    <AssemblyVersion>1.2.5.0</AssemblyVersion>
+    <FileVersion>1.2.5.0</FileVersion>
+    <InformationalVersion>1.2.5</InformationalVersion>
     <Product>D365FO Deploy Portal</Product>
     <Company>SIMS tech</Company>
     <Authors>SIMS tech</Authors>
@@ -22,8 +22,18 @@
     <ProjectReference Include="..\DeployPortal.PackageOps\DeployPortal.PackageOps.csproj" />
   </ItemGroup>
 
+  <!-- Copy PackageOps Resources (UnifiedTemplate, LcsTemplate) to app output so they are next to the DLL and included in publish -->
+  <Target Name="CopyPackageOpsResources" AfterTargets="Build">
+    <ItemGroup>
+      <_PkgOpsResources Include="$(ProjectDir)..\DeployPortal.PackageOps\bin\$(Configuration)\$(TargetFramework)\Resources\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_PkgOpsResources)" DestinationFiles="@(_PkgOpsResources->'$(OutDir)Resources\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.*" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.*" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.*">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

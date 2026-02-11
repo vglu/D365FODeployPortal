@@ -13,16 +13,19 @@ public class ConvertEngine
 {
     private readonly string _tempDir;
     private readonly string _templateDir;
+    private readonly string? _lcsTemplatePath;
 
     /// <summary>
     /// Creates a new ConvertEngine.
     /// </summary>
     /// <param name="tempDir">Temporary working directory for extraction/conversion.</param>
     /// <param name="templateDir">Path to the UnifiedTemplate resources directory.</param>
-    public ConvertEngine(string tempDir, string templateDir)
+    /// <param name="lcsTemplatePath">Optional path to LCS template (folder or .zip). When set, Unified→LCS uses it as skeleton so the result has the same structure as a full LCS package (exe, DLLs, Scripts, etc.).</param>
+    public ConvertEngine(string tempDir, string templateDir, string? lcsTemplatePath = null)
     {
         _tempDir = tempDir;
         _templateDir = templateDir;
+        _lcsTemplatePath = string.IsNullOrWhiteSpace(lcsTemplatePath) ? null : lcsTemplatePath.Trim();
     }
 
     // ═══════════════════════════════════════════════════════════
@@ -55,8 +58,18 @@ public class ConvertEngine
             onLog?.Invoke("[Built-in] Extracting LCS package...");
             ZipFile.ExtractToDirectory(lcsPackagePath, tempDir);
 
+            // Many LCS ZIPs have a single root folder (e.g. AX_AIO_Main_Production_2026.2.4.4/AOSService/...).
+            // Resolve the effective root so we find HotfixInstallationInfo.xml and AOSService in both flat and nested layouts.
+            var extractRoot = ResolveExtractRoot(tempDir);
+            string? lcsRootFolderName = null;
+            if (extractRoot != tempDir)
+            {
+                lcsRootFolderName = Path.GetFileName(extractRoot);
+                onLog?.Invoke($"[Built-in] Using nested extract root: {lcsRootFolderName}");
+            }
+
             // Read HotfixInstallationInfo.xml
-            var hotfixXmlPath = Path.Combine(tempDir, "HotfixInstallationInfo.xml");
+            var hotfixXmlPath = Path.Combine(extractRoot, "HotfixInstallationInfo.xml");
             var platformVersion = "7.0.0.0";
 
             if (File.Exists(hotfixXmlPath))
@@ -67,8 +80,8 @@ public class ConvertEngine
                 onLog?.Invoke($"[Built-in] Platform: {platformVersion}, Modules in manifest: {moduleCount}");
             }
 
-            // Extract ISV license files
-            var licenseFiles = ExtractLicenseFiles(tempDir);
+            // Extract ISV license files (AOSService resolved case-insensitively for Linux Docker)
+            var licenseFiles = ExtractLicenseFiles(extractRoot);
             if (licenseFiles.Count > 0)
                 onLog?.Invoke($"[Built-in] Found {licenseFiles.Count} license file(s) in AOSService/Scripts/License/");
 
@@ -77,9 +90,12 @@ public class ConvertEngine
             CopyTemplateFiles(outputDir, assetsDir);
 
             // Process each module: look in AOSService/Packages/files/ (dynamicsax-*.zip and *.nupkg),
-            // then fallback to AOSService/Packages/ (same patterns) for AIO/alternative layouts
-            var filesDir = Path.Combine(tempDir, "AOSService", "Packages", "files");
-            var packagesDir = Path.Combine(tempDir, "AOSService", "Packages");
+            // then fallback to AOSService/Packages/. Use case-insensitive lookup for AOSService, Packages, files (Linux).
+            var aosServiceDir = FindSubdirectory(extractRoot, "AOSService");
+            var packagesDir = aosServiceDir != null ? FindSubdirectory(aosServiceDir, "Packages") : null;
+            var filesDir = packagesDir != null ? FindSubdirectory(packagesDir, "files") : null;
+            var packagesDirAlt = packagesDir ?? (aosServiceDir != null ? Path.Combine(aosServiceDir, "Packages") : null);
+            var filesDirAlt = filesDir ?? (packagesDirAlt != null ? Path.Combine(packagesDirAlt, "files") : null);
             var managedZipNames = new List<string>();
             var correlationId = Guid.NewGuid().ToString();
             var timestamp = DateTime.UtcNow.ToString("M/d/yyyy h:mm:ss tt");
@@ -87,7 +103,7 @@ public class ConvertEngine
 
             var moduleArchives = new List<(string FilePath, string ModuleName)>();
 
-            if (Directory.Exists(filesDir))
+            if (filesDir != null && Directory.Exists(filesDir))
             {
                 foreach (var z in Directory.GetFiles(filesDir, "dynamicsax-*.zip"))
                     moduleArchives.Add((z, PackageAnalyzer.ExtractModuleName(Path.GetFileNameWithoutExtension(z))));
@@ -95,16 +111,71 @@ public class ConvertEngine
                     moduleArchives.Add((n, PackageAnalyzer.ExtractModuleNameFromNupkg(Path.GetFileName(n))));
             }
 
-            if (moduleArchives.Count == 0 && Directory.Exists(packagesDir))
+            if (moduleArchives.Count == 0 && packagesDirAlt != null && Directory.Exists(packagesDirAlt))
             {
                 onLog?.Invoke("[Built-in] AOSService/Packages/files/ empty or missing, trying AOSService/Packages/...");
-                foreach (var z in Directory.GetFiles(packagesDir, "dynamicsax-*.zip"))
+                foreach (var z in Directory.GetFiles(packagesDirAlt, "dynamicsax-*.zip"))
                     moduleArchives.Add((z, PackageAnalyzer.ExtractModuleName(Path.GetFileNameWithoutExtension(z))));
-                foreach (var n in Directory.GetFiles(packagesDir, "*.nupkg"))
+                foreach (var n in Directory.GetFiles(packagesDirAlt, "*.nupkg"))
                     moduleArchives.Add((n, PackageAnalyzer.ExtractModuleNameFromNupkg(Path.GetFileName(n))));
             }
 
+            // Last resort: search recursively under AOSService for any dynamicsax-*.zip or *.nupkg (handles alternate layouts)
+            if (moduleArchives.Count == 0 && aosServiceDir != null && Directory.Exists(aosServiceDir))
+            {
+                onLog?.Invoke("[Built-in] No modules in standard paths, searching under AOSService/...");
+                foreach (var z in Directory.GetFiles(aosServiceDir, "dynamicsax-*.zip", SearchOption.AllDirectories))
+                    moduleArchives.Add((z, PackageAnalyzer.ExtractModuleName(Path.GetFileNameWithoutExtension(z))));
+                foreach (var n in Directory.GetFiles(aosServiceDir, "*.nupkg", SearchOption.AllDirectories))
+                    moduleArchives.Add((n, PackageAnalyzer.ExtractModuleNameFromNupkg(Path.GetFileName(n))));
+            }
+
+            // Ultimate fallback: ZIP may use backslashes; .NET on Linux can create dirs like "Packages\files".
+            // Directory.GetFiles with glob may not find files in such dirs on Linux; enumerate all and filter by name.
+            // Use .zip only when present (deployable content); fall back to .nupkg only if no .zip found.
+            if (moduleArchives.Count == 0)
+            {
+                onLog?.Invoke("[Built-in] Searching entire extract directory for module archives...");
+                var zipFiles = Directory.EnumerateFiles(tempDir, "*", SearchOption.AllDirectories)
+                    .Where(f => {
+                        var seg = GetLastPathSegment(f);
+                        return seg.StartsWith("dynamicsax-", StringComparison.OrdinalIgnoreCase) && seg.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+                    }).ToArray();
+                var nupkgFiles = Directory.EnumerateFiles(tempDir, "*", SearchOption.AllDirectories)
+                    .Where(f => {
+                        var seg = GetLastPathSegment(f);
+                        return seg.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase) && seg.Contains("dynamicsax-", StringComparison.OrdinalIgnoreCase);
+                    }).ToArray();
+                var byModule = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                if (zipFiles.Length > 0)
+                {
+                    foreach (var z in zipFiles)
+                    {
+                        var fileName = GetLastPathSegment(z);
+                        var name = PackageAnalyzer.ExtractModuleName(Path.GetFileNameWithoutExtension(fileName));
+                        if (!string.IsNullOrEmpty(name)) byModule[name] = z;
+                    }
+                    onLog?.Invoke($"[Built-in] Found {byModule.Count} module(s) from .zip files");
+                }
+                if (byModule.Count == 0)
+                {
+                    foreach (var n in nupkgFiles)
+                    {
+                        var fileName = GetLastPathSegment(n);
+                        var name = PackageAnalyzer.ExtractModuleNameFromNupkg(fileName);
+                        if (!string.IsNullOrEmpty(name)) byModule[name] = n;
+                    }
+                    if (byModule.Count > 0)
+                        onLog?.Invoke($"[Built-in] Using .nupkg (no .zip found): {byModule.Count} module(s)");
+                }
+                foreach (var kv in byModule)
+                    moduleArchives.Add((kv.Value, kv.Key));
+            }
+
+            // Deduplicate by module name (e.g. same module as .zip and .nupkg); prefer first occurrence.
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             moduleArchives = moduleArchives
+                .Where(m => seen.Add(m.ModuleName))
                 .OrderBy(m => m.ModuleName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
@@ -144,6 +215,13 @@ public class ConvertEngine
             onLog?.Invoke($"[Built-in] Generating ImportConfig.xml ({managedZipNames.Count} packages)...");
             GenerateImportConfig(assetsDir, managedZipNames);
 
+            // Save LCS root folder name for round-trip (Unified→LCS will restore same structure)
+            if (!string.IsNullOrWhiteSpace(lcsRootFolderName))
+            {
+                var rootMarkerPath = Path.Combine(outputDir, "DeployPortalLcsRoot.txt");
+                await File.WriteAllTextAsync(rootMarkerPath, lcsRootFolderName.Trim());
+            }
+
             // Verify
             var templateDll = Path.Combine(outputDir, "TemplatePackage.dll");
             if (!File.Exists(templateDll))
@@ -179,6 +257,19 @@ public class ConvertEngine
         onLog?.Invoke($"  Input:  {unifiedPackagePath}");
         onLog?.Invoke($"  Output: {outputDir}");
 
+        string lcsOutputRoot;
+        if (!string.IsNullOrEmpty(_lcsTemplatePath) && (File.Exists(_lcsTemplatePath) || Directory.Exists(_lcsTemplatePath)))
+        {
+            onLog?.Invoke($"[Unified→LCS] Using LCS template: {_lcsTemplatePath}");
+            ApplyLcsTemplate(_lcsTemplatePath, outputDir, onLog);
+            lcsOutputRoot = ResolveLcsOutputRoot(outputDir);
+            onLog?.Invoke($"[Unified→LCS] LCS root: {Path.GetFileName(lcsOutputRoot)}");
+        }
+        else
+        {
+            lcsOutputRoot = outputDir;
+        }
+
         var tempDir = Path.Combine(_tempDir, $"rev_convert_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempDir);
 
@@ -196,8 +287,41 @@ public class ConvertEngine
                     throw new DirectoryNotFoundException("PackageAssets directory not found in Unified package.");
             }
 
-            var filesDir = Path.Combine(outputDir, "AOSService", "Packages", "files");
+            // If we didn't use a template, restore root folder from marker (same as before)
+            if (string.IsNullOrEmpty(_lcsTemplatePath) || (!File.Exists(_lcsTemplatePath) && !Directory.Exists(_lcsTemplatePath)))
+            {
+                var rootMarkerPath = Path.Combine(tempDir, "DeployPortalLcsRoot.txt");
+                if (File.Exists(rootMarkerPath))
+                {
+                    var rootName = (await File.ReadAllTextAsync(rootMarkerPath)).Trim();
+                    if (!string.IsNullOrEmpty(rootName))
+                    {
+                        lcsOutputRoot = Path.Combine(outputDir, rootName);
+                        Directory.CreateDirectory(lcsOutputRoot);
+                        onLog?.Invoke($"[Unified→LCS] Using LCS root folder: {rootName}");
+                    }
+                }
+            }
+
+            // When template has a single root folder named "AOSService", that folder IS the AOSService dir (no nested AOSService).
+            // Otherwise lcsOutputRoot is the full LCS root (e.g. AX_...) and we use lcsOutputRoot/AOSService.
+            var lcsRootName = Path.GetFileName(lcsOutputRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var isAosServiceRoot = string.Equals(lcsRootName, "AOSService", StringComparison.OrdinalIgnoreCase);
+            var aosServiceDir = isAosServiceRoot ? lcsOutputRoot : Path.Combine(lcsOutputRoot, "AOSService");
+            var lcsRootForHotfix = isAosServiceRoot ? Path.GetDirectoryName(lcsOutputRoot)! : lcsOutputRoot;
+
+            var packagesDir = Path.Combine(aosServiceDir, "Packages");
+            var filesDir = Path.Combine(packagesDir, "files");
             Directory.CreateDirectory(filesDir);
+
+            // When using template, clear existing .nupkg/.zip in files (and our .nupkg in Packages) so we only have our converted modules
+            if (!string.IsNullOrEmpty(_lcsTemplatePath))
+            {
+                foreach (var f in Directory.GetFiles(filesDir, "*.nupkg").Concat(Directory.GetFiles(filesDir, "*.zip")))
+                    try { File.Delete(f); } catch { }
+                foreach (var f in Directory.GetFiles(packagesDir, "dynamicsax-*.nupkg"))
+                    try { File.Delete(f); } catch { }
+            }
 
             var managedZips = Directory.GetFiles(assetsDir, "*_managed.zip")
                 .Where(f => !Path.GetFileName(f)
@@ -287,19 +411,26 @@ public class ConvertEngine
                         }
                     }
                 }
+
+                // Generate .nupkg in AOSService/Packages/ (LCS often has both .zip in files/ and .nupkg in Packages/)
+                var nupkgId = $"dynamicsax-{moduleName}";
+                var nupkgFileName = $"{nupkgId}.{moduleVersion}.nupkg";
+                var nupkgPath = Path.Combine(packagesDir, nupkgFileName);
+                await CreateNupkgFromManagedZipAsync(managedZipPath, moduleName, moduleVersion, nupkgPath);
             }
 
             if (allLicenseFiles.Count > 0)
             {
-                var licenseDir = Path.Combine(outputDir, "AOSService", "Scripts", "License");
+                var licenseDir = Path.Combine(aosServiceDir, "Scripts", "License");
                 Directory.CreateDirectory(licenseDir);
                 foreach (var (fileName, content) in allLicenseFiles)
                     await File.WriteAllBytesAsync(Path.Combine(licenseDir, fileName), content);
                 onLog?.Invoke($"[Unified→LCS] Restored {allLicenseFiles.Count} license file(s)");
             }
 
-            GenerateHotfixInstallationInfo(outputDir, moduleEntries, platformVersion);
+            GenerateHotfixInstallationInfo(lcsRootForHotfix, moduleEntries, platformVersion);
             onLog?.Invoke("[Unified→LCS] Generated HotfixInstallationInfo.xml");
+            onLog?.Invoke($"[Unified→LCS] Generated {moduleEntries.Count} .nupkg in AOSService/Packages/");
             onLog?.Invoke($"[Unified→LCS] Conversion completed: {moduleEntries.Count} modules");
 
             return outputDir;
@@ -314,17 +445,147 @@ public class ConvertEngine
     //  Private helpers
     // ═══════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Applies LCS template: extracts zip or copies directory into outputDir.
+    /// Template can be a .zip (extracted as-is) or a folder. If folder has one child dir, that child is copied into outputDir; else folder contents are copied (folder is the LCS root).
+    /// </summary>
+    private static void ApplyLcsTemplate(string templatePath, string outputDir, Action<string>? onLog)
+    {
+        if (File.Exists(templatePath))
+        {
+            ZipFile.ExtractToDirectory(templatePath, outputDir);
+            onLog?.Invoke("[Unified→LCS] Extracted LCS template ZIP");
+            return;
+        }
+        if (!Directory.Exists(templatePath))
+            return;
+
+        var entries = Directory.GetFileSystemEntries(templatePath);
+        var dirs = entries.Where(e => Directory.Exists(e)).ToList();
+        var files = entries.Where(e => File.Exists(e)).ToList();
+
+        // One child directory → treat as LCS root folder, copy it into outputDir
+        if (dirs.Count == 1 && files.Count == 0)
+        {
+            FileHelper.CopyDirectoryRecursive(dirs[0], Path.Combine(outputDir, Path.GetFileName(dirs[0])));
+            onLog?.Invoke($"[Unified→LCS] Copied LCS template root: {Path.GetFileName(dirs[0])}");
+            return;
+        }
+        // Template path is the LCS root folder (has AOSService, HotfixInstallationInfo.xml) → copy into outputDir preserving root name
+        var rootName = Path.GetFileName(templatePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrEmpty(rootName)) rootName = "LcsRoot";
+        FileHelper.CopyDirectoryRecursive(templatePath, Path.Combine(outputDir, rootName));
+        onLog?.Invoke($"[Unified→LCS] Copied LCS template root: {rootName}");
+    }
+
+    /// <summary>
+    /// After applying template, outputDir contains either one child (the LCS root) or AOSService at top level. Returns the path to the LCS root.
+    /// </summary>
+    private static string ResolveLcsOutputRoot(string outputDir)
+    {
+        var entries = Directory.GetFileSystemEntries(outputDir);
+        var dirs = entries.Where(e => Directory.Exists(e)).ToList();
+        if (dirs.Count == 1)
+            return dirs[0];
+        return outputDir;
+    }
+
+    /// <summary>
+    /// Creates a minimal .nupkg (NuGet package) with only the .nuspec manifest. In LCS, Packages/*.nupkg are
+    /// small metadata packages (~33 KB); the actual deployable content is in Packages/files/*.zip only.
+    /// We must not duplicate the module payload into .nupkg (that would double the size).
+    /// </summary>
+    private static async Task CreateNupkgFromManagedZipAsync(string managedZipPath, string moduleName, string moduleVersion, string nupkgPath)
+    {
+        var nuspecId = $"dynamicsax-{moduleName}";
+        var nuspecXml = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<package xmlns=""http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd"">
+  <metadata>
+    <id>{nuspecId}</id>
+    <version>{moduleVersion}</version>
+    <description>Dynamics 365 deployable module {moduleName}</description>
+    <authors>DeployPortal</authors>
+  </metadata>
+</package>";
+
+        using var nupkgZip = ZipFile.Open(nupkgPath, ZipArchiveMode.Create);
+        var nuspecEntry = nupkgZip.CreateEntry($"{nuspecId}.nuspec", CompressionLevel.Optimal);
+        await using (var nuspecStream = nuspecEntry.Open())
+        await using (var nuspecWriter = new StreamWriter(nuspecStream, System.Text.Encoding.UTF8))
+            await nuspecWriter.WriteAsync(nuspecXml);
+    }
+
+    /// <summary>
+    /// If the directory has exactly one child directory (and no files at root), return that child.
+    /// This handles LCS ZIPs that have a single root folder (e.g. AX_AIO_.../AOSService/...).
+    /// </summary>
+    private static string ResolveExtractRoot(string tempDir)
+    {
+        var entries = Directory.GetFileSystemEntries(tempDir);
+        var dirs = entries.Where(e => Directory.Exists(e)).ToList();
+        var files = entries.Where(e => File.Exists(e)).ToList();
+        if (dirs.Count == 1 && files.Count == 0)
+            return dirs[0];
+        return tempDir;
+    }
+
+    /// <summary>
+    /// Gets the last path segment (file name) splitting by both / and \.
+    /// On Linux, Path.GetFileName does not treat backslash as separator; ZIPs from Windows can have paths with \.
+    /// </summary>
+    private static string GetLastPathSegment(string fullPath)
+    {
+        var lastSlash = fullPath.LastIndexOfAny(new[] { '/', '\\' });
+        return lastSlash >= 0 ? fullPath[(lastSlash + 1)..] : fullPath;
+    }
+
+    /// <summary>
+    /// Finds a direct subdirectory of parent with the given name (case-insensitive).
+    /// Used so AOSService is found on Linux Docker where filesystem is case-sensitive.
+    /// </summary>
+    private static string? FindSubdirectory(string parentDir, string name)
+    {
+        if (!Directory.Exists(parentDir)) return null;
+        var found = Directory.GetDirectories(parentDir)
+            .FirstOrDefault(d => string.Equals(Path.GetFileName(d), name, StringComparison.OrdinalIgnoreCase));
+        return found;
+    }
+
     internal static List<(string FileName, string FullPath)> ExtractLicenseFiles(string extractedLcsDir)
     {
-        var licenseDir = Path.Combine(extractedLcsDir, "AOSService", "Scripts", "License");
         var result = new List<(string, string)>();
-        if (!Directory.Exists(licenseDir)) return result;
-
-        foreach (var file in Directory.GetFiles(licenseDir))
+        // Standard path: AOSService/Scripts/License (or AOSService\Scripts\License on Windows-style zips)
+        var aosService = FindSubdirectory(extractedLcsDir, "AOSService");
+        var licenseDir = aosService != null
+            ? Path.Combine(aosService, "Scripts", "License")
+            : Path.Combine(extractedLcsDir, "AOSService", "Scripts", "License");
+        if (Directory.Exists(licenseDir))
         {
-            var ext = Path.GetExtension(file).ToLowerInvariant();
-            if (ext == ".txt" || ext == ".xml")
-                result.Add((Path.GetFileName(file), file));
+            foreach (var file in Directory.GetFiles(licenseDir))
+            {
+                var ext = Path.GetExtension(file).ToLowerInvariant();
+                if (ext == ".txt" || ext == ".xml")
+                    result.Add((Path.GetFileName(file), file));
+            }
+        }
+
+        // Fallback: ZIP may use backslashes; on Linux we get dirs like "AOSService\Scripts\License" (literal \ in name).
+        // Find any file under a path that contains Scripts and License, .txt/.xml.
+        if (result.Count == 0 && Directory.Exists(extractedLcsDir))
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var file in Directory.EnumerateFiles(extractedLcsDir, "*", SearchOption.AllDirectories))
+            {
+                var ext = Path.GetExtension(file).ToLowerInvariant();
+                if (ext != ".txt" && ext != ".xml") continue;
+                var pathNorm = file.Replace('\\', '/');
+                if (!pathNorm.Contains("Scripts", StringComparison.OrdinalIgnoreCase) ||
+                    !pathNorm.Contains("License", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var fileName = GetLastPathSegment(file);
+                if (string.IsNullOrEmpty(fileName) || !seen.Add(fileName)) continue;
+                result.Add((fileName, file));
+            }
         }
         return result;
     }

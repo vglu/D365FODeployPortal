@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Конвертирует LCS-пакет встроенным конвертером и сравнивает результат с ручным Unified ZIP.
+    Converts an LCS package with the built-in converter and compares the result to a manual Unified ZIP.
 #>
 param(
     [string]$LcsZip = "D:\Downloads\AX_AIO_Main_Production_2026.2.4.4.zip",

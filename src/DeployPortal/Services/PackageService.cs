@@ -61,12 +61,6 @@ public class PackageService
         var fileInfo = new FileInfo(storedPath);
         var detectedType = packageType ?? DetectPackageType(storedPath);
 
-        // Auto-detect license files
-        var licFiles = PackageAnalyzer.DetectLicenseFiles(storedPath);
-        string? licJson = licFiles.Count > 0
-            ? System.Text.Json.JsonSerializer.Serialize(licFiles)
-            : null;
-
         var package = new Package
         {
             Name = Path.GetFileNameWithoutExtension(fileName),
@@ -76,7 +70,7 @@ public class PackageService
             PackageType = detectedType,
             UploadedAt = DateTime.UtcNow,
             DevOpsTaskUrl = string.IsNullOrWhiteSpace(devOpsTaskUrl) ? null : devOpsTaskUrl.Trim(),
-            LicenseFileNames = licJson
+            LicenseFileNames = GetLicenseFileNamesJson(storedPath)
         };
 
         await using var db = await _dbFactory.CreateDbContextAsync();
@@ -141,12 +135,21 @@ public class PackageService
                 UploadedAt = DateTime.UtcNow,
                 ParentMergeFromId = sourcePackage.Id,
                 MergeSourceNames = System.Text.Json.JsonSerializer.Serialize(
-                    new[] { $"{sourcePackage.Name} ({sourcePackage.PackageType})" })
+                    new[] { $"{sourcePackage.Name} ({sourcePackage.PackageType})" }),
+                LicenseFileNames = GetLicenseFileNamesJson(outputPath)
             };
 
             await using var db = await _dbFactory.CreateDbContextAsync();
             db.Packages.Add(pkg);
             await db.SaveChangesAsync();
+
+            // Ensure license icon shows: re-detect from file after zip is fully written
+            var licJson = GetLicenseFileNamesJson(outputPath);
+            if (licJson != null)
+            {
+                pkg.LicenseFileNames = licJson;
+                await db.SaveChangesAsync();
+            }
 
             onLog?.Invoke($"Conversion complete: {pkg.Name} ({FormatSizeStatic(fileInfo.Length)})");
             _logger.LogInformation("Package converted: {Source} → {Name}", sourcePackage.Name, pkg.Name);
@@ -197,12 +200,21 @@ public class PackageService
                 UploadedAt = DateTime.UtcNow,
                 ParentMergeFromId = sourcePackage.Id,
                 MergeSourceNames = System.Text.Json.JsonSerializer.Serialize(
-                    new[] { $"{sourcePackage.Name} ({sourcePackage.PackageType})" })
+                    new[] { $"{sourcePackage.Name} ({sourcePackage.PackageType})" }),
+                LicenseFileNames = GetLicenseFileNamesJson(outputPath)
             };
 
             await using var db = await _dbFactory.CreateDbContextAsync();
             db.Packages.Add(pkg);
             await db.SaveChangesAsync();
+
+            // Ensure license icon shows: re-detect from file after zip is fully written
+            var licJson = GetLicenseFileNamesJson(outputPath);
+            if (licJson != null)
+            {
+                pkg.LicenseFileNames = licJson;
+                await db.SaveChangesAsync();
+            }
 
             onLog?.Invoke($"Conversion complete: {pkg.Name} ({FormatSizeStatic(fileInfo.Length)})");
             _logger.LogInformation("Package converted: {Source} → {Name}", sourcePackage.Name, pkg.Name);
@@ -212,6 +224,15 @@ public class PackageService
         {
             try { Directory.Delete(tempDir, true); } catch { }
         }
+    }
+
+    /// <summary>
+    /// Detects license file names in a package ZIP and returns JSON array or null.
+    /// </summary>
+    private static string? GetLicenseFileNamesJson(string zipPath)
+    {
+        var licFiles = PackageAnalyzer.DetectLicenseFiles(zipPath);
+        return licFiles.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(licFiles) : null;
     }
 
     private static string FormatSizeStatic(long b)
@@ -318,8 +339,7 @@ public class PackageService
         // Update file size & license list
         var fileInfo = new FileInfo(package.StoredFilePath);
         package.FileSizeBytes = fileInfo.Length;
-        package.LicenseFileNames = System.Text.Json.JsonSerializer.Serialize(
-            PackageAnalyzer.DetectLicenseFiles(package.StoredFilePath));
+        package.LicenseFileNames = GetLicenseFileNamesJson(package.StoredFilePath);
         await db.SaveChangesAsync();
 
         _logger.LogInformation("Injected {Count} license file(s) into package {Name}",
@@ -328,18 +348,24 @@ public class PackageService
 
     /// <summary>
     /// Re-detects license files in an existing package and updates the db field.
+    /// Returns the number of license files found. Throws if package or file not found.
     /// </summary>
-    public async Task RefreshLicenseInfoAsync(int packageId)
+    public async Task<int> RefreshLicenseInfoAsync(int packageId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         var package = await db.Packages.FindAsync(packageId);
-        if (package == null || !File.Exists(package.StoredFilePath)) return;
+        if (package == null)
+            throw new InvalidOperationException("Package not found.");
+        if (!File.Exists(package.StoredFilePath))
+            throw new FileNotFoundException("Package file not found.", package.StoredFilePath);
 
-        var licFiles = PackageAnalyzer.DetectLicenseFiles(package.StoredFilePath);
-        package.LicenseFileNames = licFiles.Count > 0
-            ? System.Text.Json.JsonSerializer.Serialize(licFiles)
-            : null;
+        var licJson = GetLicenseFileNamesJson(package.StoredFilePath);
+        package.LicenseFileNames = licJson;
         await db.SaveChangesAsync();
+
+        if (string.IsNullOrEmpty(licJson)) return 0;
+        var list = System.Text.Json.JsonSerializer.Deserialize<List<string>>(licJson);
+        return list?.Count ?? 0;
     }
 
     /// <summary>

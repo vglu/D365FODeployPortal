@@ -30,7 +30,7 @@ public class BuiltInConvertService : IConvertService
 
     public async Task<string> ConvertToLcsAsync(string unifiedPackagePath, Action<string>? onLog = null)
     {
-        var engine = new ConvertEngine(_settings.TempWorkingDir, TemplatePath);
+        var engine = new ConvertEngine(_settings.TempWorkingDir, TemplatePath, _settings.LcsTemplatePath);
         var result = await engine.ConvertToLcsAsync(unifiedPackagePath, onLog);
         _logger.LogInformation("Built-in conversion Unified → LCS: {File}", Path.GetFileName(unifiedPackagePath));
         return result;

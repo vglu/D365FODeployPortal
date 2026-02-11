@@ -1,11 +1,14 @@
+using System.IO.Compression;
 using System.Threading.Channels;
 using DeployPortal.Components;
 using DeployPortal.Data;
 using DeployPortal.Hubs;
+using DeployPortal.Models.Api;
 using DeployPortal.PackageOps;
 using DeployPortal.Services;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using MudBlazor.Services;
 using Serilog;
 using Serilog.Events;
@@ -18,6 +21,57 @@ Log.Logger = new LoggerConfiguration()
     .WriteTo.Console()
     .WriteTo.File("logs/deploy-portal-.log", rollingInterval: RollingInterval.Day)
     .CreateLogger();
+
+// ── CLI: convert LCS → Unified (for use in container: docker run ... convert /input/package.zip [/output/Unified.zip])
+if (args.Length >= 1 && string.Equals(args[0], "convert", StringComparison.OrdinalIgnoreCase))
+{
+    var inputPath = args.Length >= 2 ? args[1] : Environment.GetEnvironmentVariable("CONVERT_INPUT");
+    var outputPath = args.Length >= 3 ? args[2] : Environment.GetEnvironmentVariable("CONVERT_OUTPUT");
+    if (string.IsNullOrEmpty(inputPath) || !File.Exists(inputPath))
+    {
+        Console.Error.WriteLine("Usage: DeployPortal.dll convert <input-lcs.zip> [output-unified.zip]");
+        Console.Error.WriteLine("   Or: set CONVERT_INPUT (and optionally CONVERT_OUTPUT), then run with 'convert'");
+        Console.Error.WriteLine("Example (container): docker run --rm -v C:\\Downloads:/data vglu/d365fo-deploy-portal:latest convert /data/package.zip /data/Unified.zip");
+        Environment.Exit(1);
+    }
+    if (string.IsNullOrEmpty(outputPath))
+        outputPath = Path.Combine(Path.GetDirectoryName(inputPath)!, Path.GetFileNameWithoutExtension(inputPath) + "_Unified.zip");
+
+    try
+    {
+        var config = new ConfigurationBuilder()
+            .AddEnvironmentVariables()
+            .Build();
+        var tempDir = config["DeployPortal:TempWorkingDir"];
+        if (string.IsNullOrWhiteSpace(tempDir))
+            tempDir = Path.Combine(Path.GetTempPath(), "DeployPortal");
+        var templateDir = Path.Combine(AppContext.BaseDirectory, "Resources", "UnifiedTemplate");
+        if (!Directory.Exists(templateDir) || !File.Exists(Path.Combine(templateDir, "TemplatePackage.dll")))
+        {
+            Console.Error.WriteLine("Template not found: Resources/UnifiedTemplate/ (Built-in converter required)");
+            Environment.Exit(2);
+        }
+        Directory.CreateDirectory(tempDir);
+        var workDir = Path.Combine(tempDir, $"cli_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(workDir);
+        var tempZip = Path.Combine(workDir, Path.GetFileName(inputPath));
+        File.Copy(inputPath, tempZip);
+        var engine = new ConvertEngine(tempDir, templateDir);
+        Console.WriteLine($"Converting: {inputPath}");
+        var outputDir = await engine.ConvertToUnifiedAsync(tempZip, msg => Console.WriteLine(msg));
+        ZipFile.CreateFromDirectory(outputDir, outputPath);
+        var size = new FileInfo(outputPath).Length;
+        Console.WriteLine($"Created: {outputPath} ({size / 1024} KB)");
+        try { Directory.Delete(workDir, true); } catch { }
+        try { Directory.Delete(outputDir, true); } catch { }
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        Environment.Exit(3);
+    }
+    Environment.Exit(0);
+}
 
 try
 {
@@ -88,6 +142,28 @@ try
     builder.Services.AddRazorComponents()
         .AddInteractiveServerComponents();
 
+    // Allow large package uploads (e.g. LCS AIO zip)
+    builder.WebHost.ConfigureKestrel(options =>
+    {
+        options.Limits.MaxRequestBodySize = 2L * 1024 * 1024 * 1024; // 2 GB
+    });
+    builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+    {
+        options.MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024; // 2 GB
+    });
+
+    // OpenAPI / Swagger
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(options =>
+    {
+        options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+        {
+            Title = "D365FO Deploy Portal API",
+            Version = "v1",
+            Description = "REST API for package upload, conversion, merge, and download. Use from Postman, curl, or Azure DevOps pipelines."
+        });
+    });
+
     // Detailed errors in development for easier debugging
     if (builder.Environment.IsDevelopment())
     {
@@ -147,8 +223,129 @@ try
     app.UseAntiforgery();
     app.MapStaticAssets();
 
+    // Swagger (API docs and UI)
+    app.UseSwagger();
+    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Deploy Portal API v1"));
+
     // SignalR hub
     app.MapHub<DeployLogHub>("/hubs/deploylog");
+
+    // ── REST API (for Postman, curl, pipelines) ───────────────────────────────────────
+    var api = app.MapGroup("/api").WithTags("API");
+
+    api.MapGet("/packages", async (PackageService pkg) =>
+    {
+        var list = await pkg.GetAllAsync();
+        return Results.Ok(list.Select(PackageDto.From));
+    })
+    .WithName("GetPackages")
+    .WithOpenApi()
+    .Produces<List<PackageDto>>(200);
+
+    api.MapGet("/packages/{id:int}", async (int id, PackageService pkg) =>
+    {
+        var p = await pkg.GetByIdAsync(id);
+        if (p == null) return Results.NotFound();
+        return Results.Ok(PackageDto.From(p));
+    })
+    .WithName("GetPackage")
+    .WithOpenApi()
+    .Produces<PackageDto>(200).Produces(404);
+
+    api.MapPost("/packages/upload", async (HttpContext ctx, PackageService pkg) =>
+    {
+        if (!ctx.Request.HasFormContentType || ctx.Request.Form.Files.Count == 0)
+            return Results.BadRequest("No file or empty file.");
+        var file = ctx.Request.Form.Files.GetFile("file") ?? ctx.Request.Form.Files[0];
+        if (file == null || file.Length == 0)
+            return Results.BadRequest("No file or empty file.");
+        var fileName = file.FileName;
+        if (string.IsNullOrEmpty(fileName) || !fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest("File must be a .zip.");
+        var packageType = ctx.Request.Form["packageType"].FirstOrDefault();
+        var devOpsTaskUrl = ctx.Request.Form["devOpsTaskUrl"].FirstOrDefault();
+        await using var stream = file.OpenReadStream();
+        var package = await pkg.UploadAsync(fileName, stream, packageType, devOpsTaskUrl);
+        return Results.Created($"/api/packages/{package.Id}", PackageDto.From(package));
+    })
+    .WithName("UploadPackage")
+    .WithOpenApi()
+    .Accepts<IFormFile>("multipart/form-data")
+    .Produces<PackageDto>(201).Produces(400);
+
+    api.MapPost("/packages/{id:int}/convert/unified", async (int id, PackageService pkg) =>
+    {
+        var source = await pkg.GetByIdAsync(id);
+        if (source == null) return Results.NotFound("Package not found.");
+        if (source.PackageType != "LCS" && source.PackageType != "Merged")
+            return Results.BadRequest($"Cannot convert {source.PackageType} to Unified. Only LCS or Merged.");
+        try
+        {
+            var result = await pkg.ConvertToUnifiedAsync(source);
+            return Results.Ok(PackageDto.From(result));
+        }
+        catch (FileNotFoundException ex) { return Results.NotFound(ex.Message); }
+        catch (InvalidOperationException ex) { return Results.BadRequest(ex.Message); }
+    })
+    .WithName("ConvertToUnified")
+    .WithOpenApi()
+    .Produces<PackageDto>(200).Produces(400).Produces(404);
+
+    api.MapPost("/packages/{id:int}/convert/lcs", async (int id, PackageService pkg) =>
+    {
+        var source = await pkg.GetByIdAsync(id);
+        if (source == null) return Results.NotFound("Package not found.");
+        if (source.PackageType != "Unified")
+            return Results.BadRequest($"Cannot convert {source.PackageType} to LCS. Only Unified.");
+        try
+        {
+            var result = await pkg.ConvertToLcsAsync(source);
+            return Results.Ok(PackageDto.From(result));
+        }
+        catch (FileNotFoundException ex) { return Results.NotFound(ex.Message); }
+        catch (InvalidOperationException ex) { return Results.BadRequest(ex.Message); }
+    })
+    .WithName("ConvertToLcs")
+    .WithOpenApi()
+    .Produces<PackageDto>(200).Produces(400).Produces(404);
+
+    api.MapPost("/packages/merge", async (MergeRequestDto body, PackageService pkgSvc, MergeService mergeSvc) =>
+    {
+        if (body.PackageIds == null || body.PackageIds.Count < 2)
+            return Results.BadRequest("At least 2 package IDs required.");
+        var packages = new List<DeployPortal.Models.Package>();
+        foreach (var pid in body.PackageIds.Distinct())
+        {
+            var p = await pkgSvc.GetByIdAsync(pid);
+            if (p == null) return Results.NotFound($"Package {pid} not found.");
+            packages.Add(p);
+        }
+        var outputName = string.IsNullOrWhiteSpace(body.MergeName)
+            ? $"Merged_{DateTime.UtcNow:yyyyMMdd_HHmmss}" : body.MergeName!.Trim();
+        try
+        {
+            var result = await mergeSvc.MergePackagesAsync(packages, outputName);
+            return Results.Created($"/api/packages/{result.Id}", PackageDto.From(result));
+        }
+        catch (ArgumentException ex) { return Results.BadRequest(ex.Message); }
+    })
+    .WithName("MergePackages")
+    .WithOpenApi()
+    .Produces<PackageDto>(201).Produces(400).Produces(404);
+
+    api.MapPost("/packages/{id:int}/refresh-licenses", async (int id, PackageService pkg) =>
+    {
+        try
+        {
+            var count = await pkg.RefreshLicenseInfoAsync(id);
+            return Results.Ok(new { count, message = count > 0 ? $"{count} license file(s) found." : "No license files in package." });
+        }
+        catch (InvalidOperationException ex) { return Results.NotFound(ex.Message); }
+        catch (FileNotFoundException ex) { return Results.NotFound(ex.Message); }
+    })
+    .WithName("RefreshLicenseInfo")
+    .WithOpenApi()
+    .Produces(200).Produces(404);
 
     // ── Package download API ──
     app.MapGet("/api/packages/{id:int}/download", async (int id, IDbContextFactory<AppDbContext> dbFactory) =>
@@ -213,3 +410,6 @@ finally
 {
     Log.CloseAndFlush();
 }
+
+// Expose for WebApplicationFactory in tests
+public partial class Program { }

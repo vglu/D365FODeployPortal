@@ -148,6 +148,7 @@ public class UnitTests
         Assert.That(result.Name, Is.EqualTo("SourcePkg (Unified)"));
         Assert.That(result.PackageType, Is.EqualTo("Unified"));
         Assert.That(result.FileSizeBytes, Is.GreaterThan(0));
+        Assert.That(result.LicenseFileNames, Is.Null, "Mock output has no license files");
         _convertMock.Verify(
             c => c.ConvertToUnifiedAsync(It.IsAny<string>(), It.IsAny<Action<string>?>()),
             Times.Once);
@@ -226,9 +227,48 @@ public class UnitTests
         Assert.That(result, Is.Not.Null);
         Assert.That(result.Name, Is.EqualTo("UnifiedPkg (LCS)"));
         Assert.That(result.PackageType, Is.EqualTo("LCS"));
+        Assert.That(result.LicenseFileNames, Is.Null, "Mock output has no license files");
         _convertMock.Verify(
             c => c.ConvertToLcsAsync(It.IsAny<string>(), It.IsAny<Action<string>?>()),
             Times.Once);
+    }
+
+    [Test]
+    public async Task RefreshLicenseInfoAsync_UpdatesLicenseFileNames_WhenPackageHasLicenses()
+    {
+        var packagesDir = Path.Combine(_testDir, "packages");
+        Directory.CreateDirectory(packagesDir);
+        var zipPath = Path.Combine(packagesDir, "pkg.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(zipPath, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            var licenseEntry = zip.CreateEntry("AOSService/Scripts/License/MyLicense.txt");
+            using (var w = licenseEntry.Open())
+            using (var sw = new StreamWriter(w))
+                sw.Write("license content");
+        }
+
+        await using (var db = await _dbFactory.CreateDbContextAsync())
+        {
+            db.Packages.Add(new Package
+            {
+                Id = 1,
+                Name = "PkgWithLicenses",
+                OriginalFileName = "pkg.zip",
+                StoredFilePath = zipPath,
+                PackageType = "LCS",
+                UploadedAt = DateTime.UtcNow,
+                LicenseFileNames = null
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var logger = new Mock<ILogger<PackageService>>();
+        var svc = new PackageService(_dbFactory, _settings, _convertMock.Object, logger.Object);
+        await svc.RefreshLicenseInfoAsync(1);
+
+        var pkg = await svc.GetByIdAsync(1);
+        Assert.That(pkg, Is.Not.Null);
+        Assert.That(pkg!.LicenseFileNames, Is.Not.Null.And.Contains("MyLicense.txt"));
     }
 }
 

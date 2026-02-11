@@ -3,10 +3,50 @@
 @inject PackageService PkgService
 @inject SettingsService SettingsSvc
 @inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
 
 <PageTitle>D365FO Deploy Portal</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
+
+<MudAlert Class="mb-4" Severity="Severity.Info" Dense="false" Variant="Variant.Outlined">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap: wrap; gap: 8px;">
+        <span>
+            <strong>API &amp; automation:</strong> interactive docs
+            <MudLink Href="@_swaggerUrl" Target="_blank" Class="ml-1 font-weight-medium">Swagger (@_swaggerUrl)</MudLink>
+            — upload packages, convert LCS↔Unified, merge, download. CLI without web UI: <code>docker run ... convert /data/input.zip /data/output.zip</code>. See below.
+        </span>
+        <MudButton Href="@_swaggerUrl" Target="_blank" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Api">
+            Open Swagger
+        </MudButton>
+    </MudStack>
+</MudAlert>
+
+<MudExpansionPanels Class="mb-4" Elevation="1">
+    <MudExpansionPanel Text="How to use: CLI, Swagger, curl, pipeline" Icon="@Icons.Material.Filled.Help" IconColor="Color.Primary" IsInitiallyExpanded="true">
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Container CLI (convert without web UI)</MudText>
+            <MudText Typo="Typo.body2">Run the container with <code>convert</code> and a mounted folder. Input and output paths are given inside the container.</MudText>
+            <MudPaper Class="pa-3" Elevation="0" Style="background: var(--mud-palette-background-grey); font-family: monospace; font-size: 0.85rem; overflow-x: auto;">
+                <pre class="ma-0">@GetCliExampleStatic()</pre>
+            </MudPaper>
+
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Swagger (API documentation)</MudText>
+            <MudText Typo="Typo.body2">Interactive documentation and request testing:</MudText>
+            <MudLink Href="@_swaggerUrl" Target="_blank" Class="font-weight-medium">@_swaggerUrl</MudLink>
+
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Example curl: upload → convert → download</MudText>
+            <MudPaper Class="pa-3" Elevation="0" Style="background: var(--mud-palette-background-grey); font-family: monospace; font-size: 0.85rem; overflow-x: auto;">
+                <pre class="ma-0">@GetCurlExampleFromBaseUrl()</pre>
+            </MudPaper>
+
+            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Example in pipeline (Azure DevOps / GitLab CI)</MudText>
+            <MudPaper Class="pa-3" Elevation="0" Style="background: var(--mud-palette-background-grey); font-family: monospace; font-size: 0.85rem; overflow-x: auto;">
+                <pre class="ma-0">@GetPipelineExampleStatic()</pre>
+            </MudPaper>
+        </MudStack>
+    </MudExpansionPanel>
+</MudExpansionPanels>
 
 @if (_toolWarnings.Count > 0)
 {
@@ -26,7 +66,7 @@
 
 <MudGrid>
     <MudItem xs="12" sm="4">
-        <MudPaper Class="pa-4" Elevation="2">
+        <MudPaper Class="pa-4" Elevation="2" Style="cursor: pointer;" @onclick="@(() => Nav.NavigateTo("/packages"))">
             <MudStack Row="true" AlignItems="AlignItems.Center">
                 <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Large" Color="Color.Primary" />
                 <div>
@@ -38,7 +78,7 @@
     </MudItem>
 
     <MudItem xs="12" sm="4">
-        <MudPaper Class="pa-4" Elevation="2">
+        <MudPaper Class="pa-4" Elevation="2" Style="cursor: pointer;" @onclick="@(() => Nav.NavigateTo("/environments"))">
             <MudStack Row="true" AlignItems="AlignItems.Center">
                 <MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Large" Color="Color.Success" />
                 <div>
@@ -50,7 +90,7 @@
     </MudItem>
 
     <MudItem xs="12" sm="4">
-        <MudPaper Class="pa-4" Elevation="2">
+        <MudPaper Class="pa-4" Elevation="2" Style="cursor: pointer;" @onclick="@(() => Nav.NavigateTo("/deployments"))">
             <MudStack Row="true" AlignItems="AlignItems.Center">
                 <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Size="Size.Large" Color="Color.Warning" />
                 <div>
@@ -65,7 +105,8 @@
 @if (_recentDeployments.Any())
 {
     <MudText Typo="Typo.h5" Class="mt-6 mb-3">Recent Deployments</MudText>
-    <MudTable Items="@_recentDeployments" Dense="true" Hover="true" Elevation="2">
+    <MudTable Items="@_recentDeployments" Dense="true" Hover="true" Elevation="2"
+              OnRowClick="@((TableRowClickEventArgs<Deployment> args) => Nav.NavigateTo($"/deployments/{args.Item.Id}"))">
         <HeaderContent>
             <MudTh>Package</MudTh>
             <MudTh>Environment</MudTh>
@@ -92,6 +133,15 @@
     private int _deployCount;
     private List<Deployment> _recentDeployments = new();
     private List<string> _toolWarnings = new();
+    private string _baseUrl = "";
+    private string _swaggerUrl = "";
+
+    protected override void OnInitialized()
+    {
+        var uri = new Uri(Nav.Uri);
+        _baseUrl = $"{uri.Scheme}://{uri.Authority}";
+        _swaggerUrl = $"{_baseUrl}/swagger";
+    }
 
     protected override async Task OnInitializedAsync()
     {

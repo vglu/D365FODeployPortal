@@ -62,6 +62,11 @@ public class SettingsService
     public string DatabasePath => GetSetting("DatabasePath",
         Path.Combine(AppContext.BaseDirectory, "deploy-portal.db"));
 
+    /// <summary>
+    /// Optional path to LCS template (folder or .zip). When set, Unified→LCS conversion uses it as skeleton so the result has the full LCS structure (AOSService/Packages exe, DLLs, Scripts, etc.). Leave empty for minimal LCS output.
+    /// </summary>
+    public string LcsTemplatePath => GetSetting("LcsTemplatePath", "");
+
     // ========== Tool Validation ==========
     public record ToolStatus(string Name, string Path, bool Exists, string Message);
 
@@ -174,7 +179,7 @@ public class SettingsService
     public Dictionary<string, string> GetAllSettings()
     {
         var userSettings = LoadUserSettings();
-        var keys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath" };
+        var keys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath" };
         var result = new Dictionary<string, string>();
 
         foreach (var key in keys)

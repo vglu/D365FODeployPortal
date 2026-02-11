@@ -421,10 +421,112 @@ Environments (FAIL):     ";
     }
 
     // =====================================================
-    //  Реальный LCS-пакет: конвертация по пути из env (для диагностики)
+    //  Nested LCS root: conversion must find AOSService under single root folder
+    //  (Same layout as many real LCS ZIPs; runs in Docker build to verify container behavior.)
     // =====================================================
 
     [Test]
+    public void ConvertToUnified_NestedLcsRoot_FindsModules()
+    {
+        var templateDir = ResolveTemplateDir();
+        Assert.That(Directory.Exists(templateDir), Is.True, "UnifiedTemplate must exist (build DeployPortal first)");
+
+        // LCS zip with single root folder: NestedRoot/AOSService/Packages/files/dynamicsax-ModuleA.1.0.0.0.zip
+        var nestedRoot = "AX_AIO_Main_Production_2026.2.4.4";
+        var lcsPath = CreateNestedLcsPackage(nestedRoot);
+        var tempDir = Path.Combine(_testDir, "convert_work");
+        Directory.CreateDirectory(tempDir);
+
+        var engine = new ConvertEngine(tempDir, templateDir);
+        var logs = new List<string>();
+        var outputDir = engine.ConvertToUnifiedAsync(lcsPath, msg => logs.Add(msg)).GetAwaiter().GetResult();
+
+        foreach (var log in logs)
+            TestContext.Out.WriteLine(log);
+
+        Assert.That(Directory.Exists(outputDir), Is.True);
+        Assert.That(File.Exists(Path.Combine(outputDir, "TemplatePackage.dll")), Is.True);
+
+        var assetsDir = Path.Combine(outputDir, "PackageAssets");
+        var managedZips = Directory.GetFiles(assetsDir, "*_managed.zip")
+            .Where(f => !Path.GetFileName(f).Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var totalSize = new DirectoryInfo(outputDir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length);
+        TestContext.Out.WriteLine($"Modules: {managedZips.Length}, Unified size: {totalSize / 1024} KB");
+
+        Assert.That(managedZips.Length, Is.GreaterThanOrEqualTo(1), "Nested LCS must produce at least one module");
+        Assert.That(totalSize, Is.GreaterThan(100 * 1024), "Unified output must be > 100 KB (not just template)");
+
+        // Licenses from LCS must be copied into first module and detectable in the packed Unified zip
+        var unifiedZipPath = Path.Combine(_testDir, "unified_out.zip");
+        System.IO.Compression.ZipFile.CreateFromDirectory(outputDir, unifiedZipPath);
+        var licenseNames = PackageAnalyzer.DetectLicenseFiles(unifiedZipPath);
+        Assert.That(licenseNames, Does.Contain("TestLicense.txt"), "Unified package must contain license copied from LCS");
+
+        // Round-trip: Unified → LCS must restore same structure (single root folder as in original LCS)
+        var lcsOutDir = engine.ConvertToLcsAsync(unifiedZipPath, msg => logs.Add(msg)).GetAwaiter().GetResult();
+        Assert.That(Directory.Exists(lcsOutDir), Is.True);
+        var expectedRoot = Path.Combine(lcsOutDir, nestedRoot);
+        Assert.That(Directory.Exists(expectedRoot), Is.True, "LCS output must have same root folder as original");
+        Assert.That(File.Exists(Path.Combine(expectedRoot, "HotfixInstallationInfo.xml")), Is.True);
+        Assert.That(Directory.Exists(Path.Combine(expectedRoot, "AOSService", "Packages", "files")), Is.True);
+        Assert.That(Directory.Exists(Path.Combine(expectedRoot, "AOSService", "Scripts", "License")), Is.True);
+        Assert.That(File.Exists(Path.Combine(expectedRoot, "AOSService", "Scripts", "License", "TestLicense.txt")), Is.True);
+    }
+
+    private string CreateNestedLcsPackage(string rootFolder)
+    {
+        var path = Path.Combine(_testDir, "nested_lcs.zip");
+        var moduleZipPath = Path.Combine(_testDir, "dynamicsax-ModuleA.1.0.0.0.zip");
+        using (var mz = ZipFile.Open(moduleZipPath, ZipArchiveMode.Create))
+        {
+            var e = mz.CreateEntry("ModuleA/metadata.xml");
+            using var w = new StreamWriter(e.Open());
+            w.Write("<metadata/>");
+        }
+
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            var hotfix = $@"<?xml version=""1.0""?><HotfixInstallationInfo><PlatformVersion>10.0.0.0</PlatformVersion><MetadataModuleList><string>ModuleA</string></MetadataModuleList></HotfixInstallationInfo>";
+            AddEntry(zip, $"{rootFolder}/HotfixInstallationInfo.xml", hotfix);
+            var moduleBytes = File.ReadAllBytes(moduleZipPath);
+            var entry = zip.CreateEntry($"{rootFolder}/AOSService/Packages/files/dynamicsax-ModuleA.1.0.0.0.zip");
+            using (var s = entry.Open())
+                s.Write(moduleBytes, 0, moduleBytes.Length);
+            // Add a license file so conversion copies it to Unified and we can assert on it
+            AddEntry(zip, $"{rootFolder}/AOSService/Scripts/License/TestLicense.txt", "Test license content");
+        }
+        File.Delete(moduleZipPath);
+        return path;
+    }
+
+    private static string ResolveTemplateDir()
+    {
+        var baseDir = Path.GetDirectoryName(typeof(IntegrationTests).Assembly.Location)!;
+        // From Tests bin (e.g. src/DeployPortal.Tests/bin/Debug/net9.0) go up to src, then into PackageOps output
+        var candidates = new[]
+        {
+            Path.Combine(baseDir, "..", "..", "..", "..", "DeployPortal.PackageOps", "bin", "Debug", "net9.0", "Resources", "UnifiedTemplate"),
+            Path.Combine(baseDir, "..", "..", "..", "..", "DeployPortal.PackageOps", "bin", "Release", "net9.0", "Resources", "UnifiedTemplate"),
+            Path.Combine(baseDir, "..", "..", "..", "..", "DeployPortal", "bin", "Debug", "net9.0", "Resources", "UnifiedTemplate"),
+            Path.Combine(baseDir, "..", "..", "..", "..", "DeployPortal", "bin", "Release", "net9.0", "Resources", "UnifiedTemplate"),
+        };
+        foreach (var c in candidates)
+        {
+            var full = Path.GetFullPath(c);
+            if (Directory.Exists(full) && File.Exists(Path.Combine(full, "TemplatePackage.dll")))
+                return full;
+        }
+        return Path.GetFullPath(candidates[0]);
+    }
+
+    // =====================================================
+    //  Real LCS package: conversion from path in env (for diagnostics)
+    // =====================================================
+
+    [Test]
+    [Explicit("Set DeployPortal_TestLcsPackagePath to a real LCS zip path; requires clean temp dir.")]
     public void ConvertRealLcsPackage_FromEnv()
     {
         var lcsPath = System.Environment.GetEnvironmentVariable("DeployPortal_TestLcsPackagePath");

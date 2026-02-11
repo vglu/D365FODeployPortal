@@ -46,6 +46,20 @@ Blazor Server UI  →  ASP.NET Core Services  →  Background Workers  →  Exte
 | **Deployment Detail** | `/deployments/{id}` | Real-time log viewer for a specific deployment |
 | **Settings** | `/settings` | Configure tool paths, storage, view tool status |
 
+## Usage examples
+
+Summary of all ways to run and use the application:
+
+| Scenario | Command / Link |
+|----------|-----------------|
+| **Development (local)** | `.\run.ps1` or `dotnet watch --project src/DeployPortal --urls "http://localhost:5137"` |
+| **Docker — web UI** | `docker compose up -d` → open http://localhost:5000 |
+| **Docker — CLI conversion** | `docker run --rm -v /path/to/packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip [/data/Unified.zip]` |
+| **Published app (Windows)** | `.\publish.ps1` → run `publish/start.cmd` or `DeployPortal.exe` |
+| **CLI conversion (local, no UI)** | `dotnet run --project src/DeployPortal -- convert "C:\path\to\Lcs.zip" ["C:\path\to\Unified.zip"]` |
+
+See sections below for details.
+
 ## Quick Start (Development)
 
 ### Prerequisites
@@ -91,8 +105,9 @@ http://localhost:5000
 ### Docker Commands
 
 ```bash
-# Build the image
+# Build the image (use your tag for push to registry)
 docker build -t d365fo-deploy-portal .
+docker build -t vglu/d365fo-deploy-portal:latest .
 
 # Run standalone (without Compose)
 docker run -d \
@@ -101,6 +116,9 @@ docker run -d \
   -v deploy-data:/app/data \
   -v deploy-packages:/app/packages \
   d365fo-deploy-portal
+
+# Run with CLI conversion only (no web server, one-off)
+docker run --rm -v /path/to/packages:/data d365fo-deploy-portal convert /data/MyLcs.zip /data/Unified.zip
 
 # View logs
 docker compose logs -f
@@ -160,6 +178,45 @@ All settings can be configured via environment variables in `docker-compose.yml`
 | `DeployPortal__DataProtectionKeysPath` | `/app/data/keys` | Encryption keys directory |
 | `DeployPortal__ConverterEngine` | `BuiltIn` | Converter engine (`BuiltIn` or `ModelUtil`) |
 | `DeployPortal__ProcessingMode` | `Local` | Processing mode (`Local` or `Azure`) |
+
+### Command-line conversion (CLI)
+
+You can use the container only for LCS → Unified conversion, without starting the web server. Pass `convert` as the first argument and mount a folder with your package.
+
+**Examples:**
+
+```bash
+# Convert one package; output file is optional (default: <name>_Unified.zip next to input)
+docker run --rm -v D:\Downloads\SCT:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip /data/MyUnified.zip
+
+# Output path omitted — creates /data/MyLcs_Unified.zip
+docker run --rm -v D:\Downloads\SCT:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip
+
+# Linux/macOS paths
+docker run --rm -v /home/user/packages:/data vglu/d365fo-deploy-portal:latest convert /data/PCM-AL-10.0.45.67.25.12.01.P1.zip /data/Unified.zip
+```
+
+**Using environment variables (e.g. in scripts):**
+
+```bash
+docker run --rm \
+  -v D:\Downloads:/data \
+  -e CONVERT_INPUT=/data/package.zip \
+  -e CONVERT_OUTPUT=/data/out.zip \
+  vglu/d365fo-deploy-portal:latest convert
+```
+
+**CLI conversion without Docker (local .NET):**
+
+```powershell
+# From repository root
+dotnet run --project src/DeployPortal -- convert "D:\Downloads\MyLcs.zip" "D:\Downloads\MyUnified.zip"
+
+# Default output: same folder, name_Unified.zip
+dotnet run --project src/DeployPortal -- convert "D:\Downloads\MyLcs.zip"
+```
+
+If the output path is omitted, the result is written as `<input name>_Unified.zip` in the same directory as the input file. Exit codes: `0` = success, `1` = usage/input error, `2` = template not found, `3` = conversion error.
 
 ### Docker Limitations
 
@@ -298,6 +355,24 @@ This output can be pasted directly into the **Import from Script** dialog on the
 | `PackageStoragePath` | Directory for uploaded packages | `<app directory>/Packages` |
 | `TempWorkingDir` | Temp directory for merge/convert | `%TEMP%/DeployPortal` |
 | `DatabasePath` | Path to SQLite database file | `<app directory>/deploy-portal.db` |
+| `LcsTemplatePath` | Optional path to LCS template (folder or .zip) for **Unified→LCS** conversion | *(empty)* |
+
+### LCS template (Unified→LCS)
+
+When you convert a package from Unified back to LCS, the default output contains only the converted modules, `HotfixInstallationInfo.xml`, and license files — without the full LCS “skeleton” (e.g. `AXUpdateInstaller.exe`, DLLs, Scripts, other files). If you need the result to match the structure of an original LCS package (e.g. for deployment or comparison), set **LCS Template** in Settings:
+
+- **Path:** A folder or a .zip file that contains the full LCS structure (one root folder with `AOSService`, `HotfixInstallationInfo.xml`, executables, Scripts, etc.). Good options: an LCS package from the asset library, or a **Custom deployable package** from your dev machine, e.g. `PackagesLocalDirectory\bin\CustomDeployablePackage\ImportISVLicense.zip` (path like `C:\Users\<you>\AppData\Local\Microsoft\Dynamics365\RuntimeSymLinks\<env>\PackagesLocalDirectory\bin\CustomDeployablePackage\ImportISVLicense.zip`). You can leave `Scripts/License` in the template empty; the converter overwrites it.
+- **Behaviour:** The converter copies the template into the output directory, then overwrites `HotfixInstallationInfo.xml`, replaces the contents of `AOSService/Packages/files` with the converted modules (`.zip`), and restores license files under `AOSService/Scripts/License`. All other files (exe, DLLs, Scripts .ps1/.psm1, etc.) come from the template unchanged.
+
+Leave the setting empty to keep the current “minimal” LCS output.
+
+**In Docker:** the image includes a full LCS template `ImportISVLicense.zip` (from CustomDeployablePackage) at `/app/Resources/LcsTemplate/ImportISVLicense.zip`, used by default for Unified→LCS. To use a different template, set `DeployPortal__LcsTemplatePath` or mount your own (e.g. `/app/lcs-template.zip`).
+
+**About .nupkg / module files:** The converter generates from the Unified package both `dynamicsax-*.zip` in `AOSService/Packages/files/` and `dynamicsax-*.nupkg` in `AOSService/Packages/`. Each `.nupkg` is a NuGet-style zip (`.nuspec` manifest plus module content). You do not put module files in the template; the template only provides the folder structure (and optionally the Microsoft runtime files — exe, DLLs — if you use your own LCS package as template).
+
+**Round-trip quality:** With the **built-in template** (LcsSkeleton), the round-trip LCS is intentionally minimal: `HotfixInstallationInfo.xml`, modules as `dynamicsax-*.zip` in `Packages/files`, and `Scripts/License`. There is no full Scripts content (exe, DLLs, install scripts) and no `.nupkg` in Packages — the converter does not generate those. If you need a round-trip LCS that matches the original (same Scripts, layout, etc.), set **LCS Template** to a real LCS package (unpacked folder or .zip) that you have from the LCS asset library or your own export.
+
+**Creating a template from your own package (e.g. production):** To use a full LCS package (e.g. AX_AIO_Main_Production_*.zip from the asset library) as the template, first remove license files so the template does not carry production licenses. Use the script `New-LcsTemplateFromPackage.ps1`: it extracts the package, deletes `AOSService/Scripts/License/*`, and optionally removes `Packages/files/*.zip` and `Packages/*.nupkg` so the template is a skeleton only. Example: `.\New-LcsTemplateFromPackage.ps1 -SourceZip "D:\Downloads\MyProduction.zip" -RemovePackagePayload`. Then set **LcsTemplatePath** in Settings to the resulting `*_NoLicenses.zip` (or copy it to `Resources/LcsTemplate/` and point to it).
 
 ### Data Storage
 
@@ -305,6 +380,88 @@ This output can be pasted directly into the **Import from Script** dialog on the
 - **Packages:** Stored as files in the configured storage directory
 - **Secrets:** Client Secrets are encrypted using ASP.NET Core Data Protection API before saving to the database
 - **Logs:** Rolling log files in `logs/` directory
+
+## REST API
+
+The portal exposes a REST API for package management: list, upload, convert (LCS↔Unified), merge, refresh licenses, and download. Use it from scripts, Postman, or Azure DevOps pipelines. Interactive documentation is available via **Swagger UI** when the app is running:
+
+- **Swagger UI:** `http://localhost:5000/swagger` (or your base URL + `/swagger`)
+
+**Base URL:** In the examples below, `BASE_URL` is `http://localhost:5000` (Docker) or `http://localhost:5137` (local `run.ps1`). Replace as needed.
+
+### Endpoints and curl examples
+
+| Action | Method | Endpoint | Description |
+|--------|--------|----------|-------------|
+| List packages | `GET` | `/api/packages` | Returns all packages (id, name, type, size, etc.) |
+| Get one package | `GET` | `/api/packages/{id}` | Returns one package by ID |
+| Upload package | `POST` | `/api/packages/upload` | Upload a .zip (multipart/form-data); optional: `packageType`, `devOpsTaskUrl` |
+| Convert to Unified | `POST` | `/api/packages/{id}/convert/unified` | Converts LCS/Merged package to Unified |
+| Convert to LCS | `POST` | `/api/packages/{id}/convert/lcs` | Converts Unified package to LCS |
+| Merge packages | `POST` | `/api/packages/merge` | Merges 2+ packages; body: `{"packageIds":[1,2],"mergeName":"MyMerge"}` |
+| Refresh licenses | `POST` | `/api/packages/{id}/refresh-licenses` | Re-scans package for license files |
+| Download package | `GET` | `/api/packages/{id}/download` | Returns the package file (attachment) |
+| List licenses | `GET` | `/api/packages/{id}/licenses` | Returns list of license file paths in the package |
+
+**Examples (curl):**
+
+```bash
+# Set base URL (Docker default)
+BASE_URL="http://localhost:5000"
+
+# List all packages
+curl -s "$BASE_URL/api/packages"
+
+# Get one package (e.g. id=1)
+curl -s "$BASE_URL/api/packages/1"
+
+# Upload a package (required: form field "file" with .zip)
+curl -X POST "$BASE_URL/api/packages/upload" \
+  -F "file=@/path/to/MyLcs.zip"
+# Optional form fields: packageType=LCS, devOpsTaskUrl=https://...
+
+# Convert package 1 to Unified
+curl -X POST "$BASE_URL/api/packages/1/convert/unified"
+
+# Convert package 2 to LCS
+curl -X POST "$BASE_URL/api/packages/2/convert/lcs"
+
+# Merge packages 1 and 2 (optional mergeName)
+curl -X POST "$BASE_URL/api/packages/merge" \
+  -H "Content-Type: application/json" \
+  -d '{"packageIds":[1,2],"mergeName":"MergedRelease"}'
+
+# Refresh license info for package 1
+curl -X POST "$BASE_URL/api/packages/1/refresh-licenses"
+
+# Download package 1 (saves to file)
+curl -o MyPackage.zip "$BASE_URL/api/packages/1/download"
+
+# List license files in package 1
+curl -s "$BASE_URL/api/packages/1/licenses"
+```
+
+### Azure DevOps Pipeline example
+
+You can call the API from a pipeline to upload a package, convert it, or download the result. Example (Bash task):
+
+```yaml
+# Upload build artifact, convert to Unified, then download (example)
+- task: Bash@3
+  displayName: 'Upload and convert package via Deploy Portal API'
+  inputs:
+    targetType: inline
+    script: |
+      BASE_URL="$(DEPLOY_PORTAL_URL)"   # e.g. https://deploy-portal.mycompany.com
+      ZIP_PATH="$(Build.ArtifactStagingDirectory)/MyPackage.zip"
+      curl -s -X POST "$BASE_URL/api/packages/upload" -F "file=@$ZIP_PATH" -o upload.json
+      ID=$(jq -r '.id' upload.json)
+      curl -s -X POST "$BASE_URL/api/packages/$ID/convert/unified" -o convert.json
+      UNIFIED_ID=$(jq -r '.id' convert.json)
+      curl -o "$(Build.ArtifactStagingDirectory)/Unified.zip" "$BASE_URL/api/packages/$UNIFIED_ID/download"
+```
+
+For **merge** in a pipeline, POST to `/api/packages/merge` with a JSON body containing `packageIds` and optional `mergeName`, then use the returned package `id` for deploy or download.
 
 ## Package Types
 

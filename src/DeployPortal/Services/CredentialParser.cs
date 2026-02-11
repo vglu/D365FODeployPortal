@@ -21,10 +21,7 @@ public class CredentialParser
                                    && !string.IsNullOrWhiteSpace(TenantId);
         public bool HasSecret => !string.IsNullOrWhiteSpace(ClientSecret)
                               && ClientSecret != "*** SHOWN IN CONSOLE ***"
-                              && ClientSecret != "Not created (add environment mode)"
-                              // Backward compatibility with Russian output
-                              && ClientSecret != "*** ПЕРЕДАН В КОНСОЛЬ ***"
-                              && ClientSecret != "Не создавался (режим добавления)";
+                              && ClientSecret != "Not created (add environment mode)";
         public bool HasEnvironments => Environments.Count > 0;
     }
 

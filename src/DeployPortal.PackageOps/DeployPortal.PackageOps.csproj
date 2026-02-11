@@ -15,6 +15,10 @@
     <None Include="Resources\UnifiedTemplate\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <Content Remove="Resources\LcsTemplate\**\*" />
+    <None Include="Resources\LcsTemplate\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

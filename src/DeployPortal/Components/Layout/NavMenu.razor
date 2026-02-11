@@ -25,17 +25,20 @@
     <MudStack Spacing="1">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
             <MudIcon Icon="@Icons.Material.Filled.Rocket" Size="Size.Small" Color="Color.Primary" />
-            <MudText Typo="Typo.caption" Style="font-weight:600">
+            <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.caption" Color="Color.Default" Style="text-decoration:none; font-weight:600">
                 Deploy Portal <span style="opacity:0.7">v@(_version)</span>
-            </MudText>
+            </MudLink>
         </MudStack>
         <MudText Typo="Typo.caption" Style="opacity:0.6; font-size:0.7rem">
-            by <strong>SIMS tech</strong>
+            by <MudLink Href="@_companyUrl" Target="_blank" Typo="Typo.caption" Color="Color.Default" Style="text-decoration:none; font-weight:600">SIMS tech</MudLink>
         </MudText>
     </MudStack>
 </div>
 
 @code {
+    private const string _productPageUrl = "https://sims-service.com/products/d365fo-deploy-portal";
+    private const string _companyUrl = "https://sims-service.com";
+
     private string _version = Assembly.GetExecutingAssembly()
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
         ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString(3)

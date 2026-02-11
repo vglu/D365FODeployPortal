@@ -11,7 +11,9 @@
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
                        OnClick="@ToggleDrawer" />
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="ml-3">
-            <MudText Typo="Typo.h6">D365FO Deploy Portal</MudText>
+            <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.h6" Color="Color.Inherit" Style="text-decoration:none; font-weight:600">
+                D365FO Deploy Portal
+            </MudLink>
             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
                      Style="color:rgba(255,255,255,0.7); border-color:rgba(255,255,255,0.3); height:20px; font-size:0.7rem">
                 v@(_version)
@@ -43,7 +45,9 @@
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                         <MudIcon Icon="@Icons.Material.Filled.Rocket" Size="Size.Small" Color="Color.Primary" />
                         <MudText Typo="Typo.caption" Style="opacity:0.7">
-                            <strong>D365FO Deploy Portal</strong> v@(_version) by <strong>SIMS tech</strong>
+                            <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.caption" Color="Color.Default" Style="opacity:0.9; text-decoration:none; font-weight:600">D365FO Deploy Portal</MudLink>
+                            v@(_version) by
+                            <MudLink Href="@_companyUrl" Target="_blank" Typo="Typo.caption" Color="Color.Default" Style="opacity:0.9; text-decoration:none; font-weight:600">SIMS tech</MudLink>
                         </MudText>
                     </MudStack>
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
@@ -79,9 +83,9 @@
                 <MudIcon Icon="@Icons.Material.Filled.Rocket" Size="Size.Large" />
             </MudAvatar>
 
-            <MudText Typo="Typo.h5" Align="Align.Center" Style="font-weight:700">
+            <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.h5" Align="Align.Center" Style="font-weight:700; text-decoration:none">
                 D365FO Deploy Portal
-            </MudText>
+            </MudLink>
 
             <MudChip T="string" Size="Size.Medium" Color="Color.Primary" Variant="Variant.Outlined">
                 Version @_version
@@ -97,7 +101,7 @@
             <MudStack Spacing="2" Style="width:100%">
                 <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
                     <MudIcon Icon="@Icons.Material.Filled.Business" Size="Size.Small" Color="Color.Primary" />
-                    <MudText Typo="Typo.body2"><strong>SIMS tech</strong></MudText>
+                    <MudLink Href="@_companyUrl" Target="_blank" Typo="Typo.body2" Style="text-decoration:none"><strong>SIMS tech</strong></MudLink>
                 </MudStack>
 
                 <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
@@ -109,7 +113,7 @@
 
                 <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
                     <MudIcon Icon="@Icons.Material.Filled.Language" Size="Size.Small" Color="Color.Tertiary" />
-                    <MudLink Href="https://sims-service.com/products/d365fo-deploy-portal" Target="_blank" Typo="Typo.body2">
+                    <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.body2">
                         sims-service.com — Product Page
                     </MudLink>
                 </MudStack>
@@ -143,6 +147,9 @@
 </MudDialog>
 
 @code {
+    private const string _productPageUrl = "https://sims-service.com/products/d365fo-deploy-portal";
+    private const string _companyUrl = "https://sims-service.com";
+
     private bool _drawerOpen = true;
     private bool _isDarkMode = false;
     private bool _aboutDialogVisible = false;
