@@ -42,6 +42,8 @@ public class MergeService
 
         var strategy = DetectMergeStrategy(packages);
         var packagePaths = packages.Select(p => p.StoredFilePath).ToList();
+        if (onLog == null)
+            onLog = msg => _logger.LogInformation("[Merge] {Msg}", msg);
 
         var engine = new MergeEngine(TempDir);
         string resultDir;

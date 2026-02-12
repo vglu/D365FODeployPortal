@@ -91,8 +91,9 @@ try
 
     // Data Protection (for encrypting secrets) — persist keys to a stable directory
     // so they survive container restarts and app redeployments
-    var dataProtectionKeysDir = builder.Configuration["DeployPortal:DataProtectionKeysPath"]
-        ?? Path.Combine(AppContext.BaseDirectory, "keys");
+    var dataProtectionKeysDir = builder.Configuration["DeployPortal:DataProtectionKeysPath"];
+    if (string.IsNullOrWhiteSpace(dataProtectionKeysDir))
+        dataProtectionKeysDir = Path.Combine(AppContext.BaseDirectory, "keys");
     Directory.CreateDirectory(dataProtectionKeysDir);
     builder.Services.AddDataProtection()
         .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysDir));
@@ -333,6 +334,26 @@ try
     .WithOpenApi()
     .Produces<PackageDto>(201).Produces(400).Produces(404);
 
+    api.MapPost("/packages/delete-bulk", async (BulkDeletePackagesRequest body, PackageService pkg) =>
+    {
+        if (body?.Ids == null || body.Ids.Count == 0)
+            return Results.BadRequest("Ids array required.");
+        var deleted = 0;
+        foreach (var id in body.Ids.Distinct())
+        {
+            try
+            {
+                await pkg.DeleteAsync(id);
+                deleted++;
+            }
+            catch { /* skip missing */ }
+        }
+        return Results.Ok(new { deleted, message = $"{deleted} package(s) deleted." });
+    })
+    .WithName("DeletePackagesBulk")
+    .WithOpenApi()
+    .Produces(200).Produces(400);
+
     api.MapPost("/packages/{id:int}/refresh-licenses", async (int id, PackageService pkg) =>
     {
         try
@@ -346,6 +367,105 @@ try
     .WithName("RefreshLicenseInfo")
     .WithOpenApi()
     .Produces(200).Produces(404);
+
+    // Upload license files into an existing package (multipart: one or more "file" parts).
+    api.MapPost("/packages/{id:int}/licenses", async (int id, HttpContext ctx, PackageService pkg) =>
+    {
+        if (!ctx.Request.HasFormContentType || ctx.Request.Form.Files.Count == 0)
+            return Results.BadRequest("No files. Send multipart/form-data with one or more 'file' parts.");
+        var licenseFiles = new List<(string FileName, byte[] Content)>();
+        foreach (var formFile in ctx.Request.Form.Files)
+        {
+            var file = formFile;
+            var fileName = file.FileName ?? "license.dat";
+            if (string.IsNullOrWhiteSpace(Path.GetFileName(fileName)))
+                fileName = $"license_{licenseFiles.Count + 1}.dat";
+            await using var stream = file.OpenReadStream();
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            licenseFiles.Add((fileName.Trim(), ms.ToArray()));
+        }
+        if (licenseFiles.Count == 0)
+            return Results.BadRequest("No file or empty file.");
+        try
+        {
+            await pkg.InjectLicenseFilesAsync(id, licenseFiles);
+            return Results.Ok(new { count = licenseFiles.Count, message = $"Injected {licenseFiles.Count} license file(s) into package." });
+        }
+        catch (FileNotFoundException) { return Results.NotFound("Package not found."); }
+        catch (InvalidOperationException ex) { return Results.NotFound(ex.Message); }
+    })
+    .WithName("UploadLicensesIntoPackage")
+    .WithOpenApi()
+    .Accepts<IFormFile>("multipart/form-data")
+    .Produces(200).Produces(400).Produces(404);
+
+    // Start a deployment (returns deployment id / batch number).
+    api.MapPost("/deployments", async (DeployRequestDto body, DeploymentOrchestrator orchestrator, IDbContextFactory<AppDbContext> dbFactory) =>
+    {
+        if (body.PackageId <= 0 || body.EnvironmentId <= 0)
+            return Results.BadRequest("PackageId and EnvironmentId must be positive.");
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var packageExists = await db.Packages.AnyAsync(p => p.Id == body.PackageId);
+        if (!packageExists)
+            return Results.NotFound("Package not found.");
+        var envExists = await db.Environments.AnyAsync(e => e.Id == body.EnvironmentId);
+        if (!envExists)
+            return Results.NotFound("Environment not found.");
+        var d = new DeployPortal.Models.Deployment
+        {
+            PackageId = body.PackageId,
+            EnvironmentId = body.EnvironmentId,
+            Status = DeployPortal.Models.DeploymentStatus.Queued,
+            QueuedAt = DateTime.UtcNow,
+            DevOpsTaskUrl = string.IsNullOrWhiteSpace(body.DevOpsTaskUrl) ? null : body.DevOpsTaskUrl.Trim()
+        };
+        db.Deployments.Add(d);
+        await db.SaveChangesAsync();
+        await orchestrator.EnqueueAsync(d.Id);
+        return Results.Created($"/api/deployments/{d.Id}", new { deploymentId = d.Id, status = "Queued" });
+    })
+    .WithName("StartDeployment")
+    .WithOpenApi()
+    .Produces(201).Produces(400).Produces(404);
+
+    // Get deployment status by id (batch number).
+    api.MapGet("/environments/export", async (EnvironmentService envSvc) =>
+    {
+        var data = await envSvc.GetExportDataAsync();
+        var fileName = $"environments_backup_{DateTime.UtcNow:yyyyMMdd_HHmmss}.json";
+        var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        return Results.File(bytes, "application/json", fileName);
+    })
+    .WithName("ExportEnvironments")
+    .WithOpenApi()
+    .Produces<List<EnvironmentExportDto>>(200);
+
+    api.MapPost("/environments/import", async (List<EnvironmentExportDto> body, EnvironmentService envSvc) =>
+    {
+        if (body == null || body.Count == 0)
+            return Results.BadRequest("JSON array of environments required.");
+        var created = await envSvc.ImportFromExportAsync(body);
+        return Results.Ok(new { created, message = $"{created} environment(s) imported." });
+    })
+    .WithName("ImportEnvironments")
+    .WithOpenApi()
+    .Produces(200).Produces(400);
+
+    api.MapGet("/deployments/{id:int}", async (int id, IDbContextFactory<AppDbContext> dbFactory) =>
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var d = await db.Deployments
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == id);
+        if (d == null)
+            return Results.NotFound("Deployment not found.");
+        return Results.Ok(DeploymentDto.From(d));
+    })
+    .WithName("GetDeployment")
+    .WithOpenApi()
+    .Produces<DeploymentDto>(200).Produces(404);
 
     // ── Package download API ──
     app.MapGet("/api/packages/{id:int}/download", async (int id, IDbContextFactory<AppDbContext> dbFactory) =>

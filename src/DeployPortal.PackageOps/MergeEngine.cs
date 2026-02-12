@@ -26,25 +26,28 @@ public class MergeEngine
         Directory.CreateDirectory(tmpDir);
 
         onLog?.Invoke("[LCS Merge] Extracting base package...");
-        ZipFile.ExtractToDirectory(packagePaths[0], commonDir);
+        FileHelper.ExtractZipToDirectory(packagePaths[0], commonDir);
+        var commonRoot = FileHelper.ResolveExtractRoot(commonDir);
 
         for (int i = 1; i < packagePaths.Count; i++)
         {
             onLog?.Invoke($"[LCS Merge] Merging package {i + 1}/{packagePaths.Count}...");
             if (Directory.Exists(tmpDir)) Directory.Delete(tmpDir, true);
             Directory.CreateDirectory(tmpDir);
-            ZipFile.ExtractToDirectory(packagePaths[i], tmpDir);
+            FileHelper.ExtractZipToDirectory(packagePaths[i], tmpDir);
+            var tmpRoot = FileHelper.ResolveExtractRoot(tmpDir);
 
-            var sourceAOS = Path.Combine(tmpDir, "AOSService");
-            var targetAOS = Path.Combine(commonDir, "AOSService");
+            // On Linux, zip entries with backslash (Windows) create dirs like "AOSService\Packages"; find by logical name
+            var sourceAOS = FileHelper.FindChildDirectory(tmpRoot, "AOSService") ?? Path.Combine(tmpRoot, "AOSService");
+            var targetAOS = FileHelper.FindChildDirectory(commonRoot, "AOSService") ?? Path.Combine(commonRoot, "AOSService");
             if (Directory.Exists(sourceAOS))
             {
                 onLog?.Invoke("  Merging AOSService content");
                 FileHelper.CopyDirectoryRecursive(sourceAOS, targetAOS);
             }
 
-            var xmlPath1 = Path.Combine(commonDir, "HotfixInstallationInfo.xml");
-            var xmlPath2 = Path.Combine(tmpDir, "HotfixInstallationInfo.xml");
+            var xmlPath1 = Path.Combine(commonRoot, "HotfixInstallationInfo.xml");
+            var xmlPath2 = Path.Combine(tmpRoot, "HotfixInstallationInfo.xml");
             if (File.Exists(xmlPath1) && File.Exists(xmlPath2))
             {
                 onLog?.Invoke("  Merging HotfixInstallationInfo.xml");
@@ -66,7 +69,7 @@ public class MergeEngine
             onLog?.Invoke($"[UDE Merge] Extracting package {i + 1}/{packagePaths.Count}...");
             var tempExtract = Path.Combine(workDir, $"pkg_{i}");
             Directory.CreateDirectory(tempExtract);
-            ZipFile.ExtractToDirectory(packagePaths[i], tempExtract);
+            FileHelper.ExtractZipToDirectory(packagePaths[i], tempExtract);
 
             var pkgAssetsDir = Path.Combine(tempExtract, "PackageAssets");
             if (Directory.Exists(pkgAssetsDir))

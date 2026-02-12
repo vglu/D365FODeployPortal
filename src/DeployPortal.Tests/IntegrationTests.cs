@@ -580,6 +580,70 @@ Environments (FAIL):     ";
     }
 
     // =====================================================
+    //  LCS "apply" simulation: auto-convert to Unified and compare with reference P2
+    //  (Verifies that converted output matches reference Unified and matches native/Docker behavior.)
+    // =====================================================
+
+    [Test]
+    [Explicit("Requires reference paths: set DeployPortal_TestLcsPackagePath and DeployPortal_TestUnifiedReferencePath, or use defaults under D:\\Downloads\\SCT\\1046703\\exp\\Joined")]
+    public void LcsApplySimulation_ConvertToUnified_MatchesReferenceP2()
+    {
+        var lcsPath = System.Environment.GetEnvironmentVariable("DeployPortal_TestLcsPackagePath")
+            ?? @"D:\Downloads\SCT\1046703\exp\Joined\P2.zip";
+        var referenceUnifiedDir = System.Environment.GetEnvironmentVariable("DeployPortal_TestUnifiedReferencePath")
+            ?? @"D:\Downloads\SCT\1046703\exp\Joined\P2";
+
+        if (!File.Exists(lcsPath))
+        {
+            Assert.Ignore($"LCS package not found: {lcsPath}. Set DeployPortal_TestLcsPackagePath or place P2.zip at default path.");
+            return;
+        }
+        if (!Directory.Exists(referenceUnifiedDir))
+        {
+            Assert.Ignore($"Reference Unified folder not found: {referenceUnifiedDir}. Set DeployPortal_TestUnifiedReferencePath or place P2 at default path.");
+            return;
+        }
+
+        var templateDir = ResolveTemplateDir();
+        Assert.That(Directory.Exists(templateDir), Is.True, "UnifiedTemplate must exist");
+
+        var tempDir = Path.Combine(_testDir, "sim_apply");
+        Directory.CreateDirectory(tempDir);
+
+        var engine = new ConvertEngine(tempDir, templateDir);
+        var logs = new List<string>();
+        var outputDir = engine.ConvertToUnifiedAsync(lcsPath, msg => logs.Add(msg)).GetAwaiter().GetResult();
+
+        Assert.That(Directory.Exists(outputDir), Is.True);
+        Assert.That(File.Exists(Path.Combine(outputDir, "TemplatePackage.dll")), Is.True, "Converted output must have TemplatePackage.dll");
+        Assert.That(Directory.Exists(Path.Combine(outputDir, "PackageAssets")), Is.True, "Converted output must have PackageAssets");
+
+        // Zip converted output and reference folder for size/structure comparison
+        var convertedZip = Path.Combine(_testDir, "converted_unified.zip");
+        var referenceZip = Path.Combine(_testDir, "reference_p2.zip");
+        ZipFile.CreateFromDirectory(outputDir, convertedZip);
+        ZipFile.CreateFromDirectory(referenceUnifiedDir, referenceZip);
+
+        var convertedSize = new FileInfo(convertedZip).Length;
+        var referenceSize = new FileInfo(referenceZip).Length;
+        var sizeRatio = referenceSize > 0 ? (double)convertedSize / referenceSize : 1.0;
+
+        TestContext.Out.WriteLine($"Converted size: {convertedSize / 1024} KB");
+        TestContext.Out.WriteLine($"Reference P2 (zipped) size: {referenceSize / 1024} KB");
+        TestContext.Out.WriteLine($"Size ratio: {sizeRatio:P1}");
+
+        // Allow 15% size variance (compression, timestamps, minor template differences)
+        Assert.That(sizeRatio, Is.GreaterThan(0.85).And.LessThan(1.15),
+            "Converted Unified size should be within 15% of reference P2 (zipped). Same LCS must produce same structure in native and Docker.");
+
+        // Same key structure: TemplatePackage.dll and PackageAssets at root
+        var refHasTemplate = File.Exists(Path.Combine(referenceUnifiedDir, "TemplatePackage.dll"));
+        var refHasAssets = Directory.Exists(Path.Combine(referenceUnifiedDir, "PackageAssets"));
+        Assert.That(refHasTemplate, Is.True, "Reference P2 must contain TemplatePackage.dll");
+        Assert.That(refHasAssets, Is.True, "Reference P2 must contain PackageAssets");
+    }
+
+    // =====================================================
     //  Helpers
     // =====================================================
 

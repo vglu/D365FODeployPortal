@@ -1,4 +1,5 @@
 @page "/packages"
+@implements IDisposable
 @inject PackageService PkgService
 @inject MergeService MergeSvc
 @inject NavigationManager NavManager
@@ -8,27 +9,30 @@
 
 <PageTitle>Packages</PageTitle>
 
-@* Upload area *@
+@* Upload area with drop zone *@
 <MudPaper Class="pa-4 mb-4" Elevation="2">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
-        <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Primary" />
-        <MudText Typo="Typo.h6">Upload Package</MudText>
-        <MudSpacer />
-        <MudSelect @bind-Value="_uploadType" Label="Package type" Variant="Variant.Outlined"
-                   Margin="Margin.Dense" Style="width:160px" Dense="true">
-            <MudSelectItem Value="@("Auto")">Auto-detect</MudSelectItem>
-            <MudSelectItem Value="@("LCS")">LCS</MudSelectItem>
-            <MudSelectItem Value="@("Unified")">Unified</MudSelectItem>
-            <MudSelectItem Value="@("Other")">Other</MudSelectItem>
-        </MudSelect>
-        <MudFileUpload @ref="_fileUpload" T="IBrowserFile" FilesChanged="@OnFileSelected" Accept=".zip"
-                       MaximumFileCount="1" Hidden="true" />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.CloudUpload"
-                   OnClick="@OpenFilePicker" Disabled="@_uploading">
-            @(_uploading ? "Uploading..." : "Select ZIP file")
-        </MudButton>
-    </MudStack>
+    <div id="packages-drop-zone" @ref="_dropZoneRef" class="packages-drop-zone @(_dropZoneActive ? "packages-drop-zone-active" : "")">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+            <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Upload Package</MudText>
+            <MudSpacer />
+            <MudSelect @bind-Value="_uploadType" Label="Package type" Variant="Variant.Outlined"
+                       Margin="Margin.Dense" Style="width:160px" Dense="true">
+                <MudSelectItem Value="@("Auto")">Auto-detect</MudSelectItem>
+                <MudSelectItem Value="@("LCS")">LCS</MudSelectItem>
+                <MudSelectItem Value="@("Unified")">Unified</MudSelectItem>
+                <MudSelectItem Value="@("Other")">Other</MudSelectItem>
+            </MudSelect>
+            <MudFileUpload @ref="_fileUpload" T="IReadOnlyList<IBrowserFile>" FilesChanged="@OnFilesSelected" Accept=".zip"
+                           MaximumFileCount="20" Hidden="true" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.CloudUpload"
+                       OnClick="@OpenFilePicker" Disabled="@_uploading">
+                @(_uploading ? _uploadProgress : "Select ZIP file(s)")
+            </MudButton>
+        </MudStack>
+        <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">or drag and drop .zip files here</MudText>
+    </div>
     <MudTextField @bind-Value="_uploadDevOpsUrl" Label="Azure DevOps Task URL (optional)"
                   Placeholder="https://dev.azure.com/org/project/_workitems/edit/12345"
                   Variant="Variant.Text" Margin="Margin.Dense" Class="mt-2"
@@ -58,6 +62,14 @@
                        StartIcon="@Icons.Material.Filled.MergeType" Class="ml-3"
                        OnClick="@MergeSelected" Disabled="@_merging">
                 @(_merging ? "Merging..." : $"Merge {_selectedForMerge.Count} packages")
+            </MudButton>
+        }
+        @if (_selectedForMerge.Count >= 1)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Delete" Class="ml-3"
+                       OnClick="@ConfirmDeleteSelected" Disabled="@_deleting">
+                @(_deleting ? "Deleting..." : $"Delete {_selectedForMerge.Count} package(s)")
             </MudButton>
         }
         <MudSpacer />
@@ -343,8 +355,11 @@
 
 @code {
     private MudTable<Package>? _table;
-    private MudFileUpload<IBrowserFile>? _fileUpload;
+    private MudFileUpload<IReadOnlyList<IBrowserFile>>? _fileUpload;
     private MudFileUpload<IReadOnlyList<IBrowserFile>>? _licFileUpload;
+    private ElementReference _dropZoneRef;
+    private bool _dropZoneActive;
+    private string _uploadProgress = "";
     private int? _licUploadTargetPkgId;
     private List<Package> _packages = new();
     private HashSet<Package> _selectedForMerge = new();
@@ -352,10 +367,13 @@
     private bool _loading = true;
     private bool _uploading;
     private bool _merging;
+    private bool _deleting;
     private string _searchText = "";
     private string _uploadType = "Auto";
     private string _lastDetectedType = "";
     private string _uploadDevOpsUrl = "";
+    private IJSObjectReference? _dropZoneJs;
+    private DotNetObjectReference<Packages>? _dotNetRef;
 
     private HashSet<int> _converting = new();
 
@@ -372,6 +390,22 @@
     }
 
     protected override async Task OnInitializedAsync() => await LoadData();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _dropZoneRef.Id != null)
+        {
+            try
+            {
+                _dotNetRef = DotNetObjectReference.Create(this);
+                _dropZoneJs = await JS.InvokeAsync<IJSObjectReference>("import", "./js/packages-upload.js");
+                await _dropZoneJs.InvokeVoidAsync("initDropZone", "packages-drop-zone", NavManager.BaseUri.TrimEnd('/'), _dotNetRef);
+            }
+            catch (Exception) { /* JS or module not available */ }
+        }
+    }
+
+    public void Dispose() => _dotNetRef?.Dispose();
 
     private async Task LoadData()
     {
@@ -412,26 +446,72 @@
     }
 
     // ===== Upload =====
-    private async Task OnFileSelected(IBrowserFile file)
+    private async Task OnFilesSelected(IReadOnlyList<IBrowserFile> files)
     {
-        if (file == null) return;
+        if (files == null || files.Count == 0) return;
+        var zipFiles = files.Where(f => f.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (zipFiles.Count == 0) { Snackbar.Add("Select .zip files.", Severity.Warning); return; }
         _uploading = true;
         _lastDetectedType = "";
-        StateHasChanged();
+        string? typeOverride = _uploadType == "Auto" ? null : _uploadType;
+        string? devOpsUrl = string.IsNullOrWhiteSpace(_uploadDevOpsUrl) ? null : _uploadDevOpsUrl;
+        var total = zipFiles.Count;
+        var done = 0;
+        var failed = 0;
         try
         {
-            string? typeOverride = _uploadType == "Auto" ? null : _uploadType;
-            string? devOpsUrl = string.IsNullOrWhiteSpace(_uploadDevOpsUrl) ? null : _uploadDevOpsUrl;
-            using var stream = file.OpenReadStream(maxAllowedSize: 2L * 1024 * 1024 * 1024);
-            var pkg = await PkgService.UploadAsync(file.Name, stream, typeOverride, devOpsUrl);
-            if (_uploadType == "Auto")
-                _lastDetectedType = pkg.PackageType;
+            for (var i = 0; i < zipFiles.Count; i++)
+            {
+                var file = zipFiles[i];
+                _uploadProgress = total > 1 ? $"Uploading {i + 1}/{total}..." : "Uploading...";
+                StateHasChanged();
+                try
+                {
+                    await using var stream = file.OpenReadStream(maxAllowedSize: 2L * 1024 * 1024 * 1024);
+                    var pkg = await PkgService.UploadAsync(file.Name, stream, typeOverride, devOpsUrl);
+                    if (_uploadType == "Auto" && string.IsNullOrEmpty(_lastDetectedType))
+                        _lastDetectedType = pkg.PackageType;
+                    done++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Snackbar.Add($"'{file.Name}': {ex.Message}", Severity.Error);
+                }
+                devOpsUrl = null; // use URL only for first file
+            }
+            if (done > 0)
+            {
+                Snackbar.Add(done == 1 ? $"Uploaded 1 package." : $"Uploaded {done} package(s).", Severity.Success);
+                await LoadData();
+            }
+        }
+        finally
+        {
+            _uploading = false;
+            _uploadProgress = "";
             _uploadDevOpsUrl = "";
-            Snackbar.Add($"'{file.Name}' uploaded as {pkg.PackageType}.", Severity.Success);
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void SetDropZoneActive(bool active) { _dropZoneActive = active; StateHasChanged(); }
+
+    [JSInvokable]
+    public object GetUploadOptions() => new { packageType = _uploadType ?? "Auto", devOpsTaskUrl = _uploadDevOpsUrl ?? "" };
+
+    [JSInvokable]
+    public async Task OnDropZoneUploadComplete(int successCount, int failCount)
+    {
+        if (successCount > 0)
+        {
+            Snackbar.Add(successCount == 1 ? "1 package uploaded." : $"{successCount} packages uploaded.", Severity.Success);
             await LoadData();
         }
-        catch (Exception ex) { Snackbar.Add($"Upload failed: {ex.Message}", Severity.Error); }
-        finally { _uploading = false; }
+        if (failCount > 0)
+            Snackbar.Add($"{failCount} upload(s) failed.", Severity.Error);
+        StateHasChanged();
     }
 
     // ===== Merge =====
@@ -657,6 +737,28 @@
     }
 
     // ===== Delete =====
+    private async Task ConfirmDeleteSelected()
+    {
+        if (_selectedForMerge.Count == 0) return;
+        var result = await DialogService.ShowMessageBox("Delete packages",
+            $"Delete {_selectedForMerge.Count} selected package(s)? This cannot be undone.", yesText: "Delete", cancelText: "Cancel");
+        if (result != true) return;
+        _deleting = true;
+        StateHasChanged();
+        try
+        {
+            var ids = _selectedForMerge.Select(p => p.Id).ToList();
+            foreach (var id in ids)
+            {
+                try { await PkgService.DeleteAsync(id); } catch { /* skip if already gone */ }
+            }
+            Snackbar.Add($"{ids.Count} package(s) deleted.", Severity.Info);
+            _selectedForMerge.Clear();
+            await LoadData();
+        }
+        finally { _deleting = false; }
+    }
+
     private async Task DeletePackage(Package pkg)
     {
         var result = await DialogService.ShowMessageBox("Delete Package",

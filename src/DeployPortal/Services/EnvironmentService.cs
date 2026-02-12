@@ -1,4 +1,5 @@
 using DeployPortal.Data;
+using DeployPortal.Models.Api;
 using Microsoft.EntityFrameworkCore;
 
 namespace DeployPortal.Services;
@@ -98,6 +99,48 @@ public class EnvironmentService
         await db.SaveChangesAsync();
 
         _logger.LogInformation("Environment deleted: {Name}", env.Name);
+    }
+
+    /// <summary>Returns all environments as export DTOs (for backup; includes encrypted secret for same-machine restore).</summary>
+    public async Task<List<Models.Api.EnvironmentExportDto>> GetExportDataAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var list = await db.Environments.OrderBy(e => e.Name).ToListAsync();
+        return list.Select(e => new EnvironmentExportDto
+        {
+            Name = e.Name,
+            Url = e.Url,
+            TenantId = e.TenantId,
+            ApplicationId = e.ApplicationId,
+            ClientSecretEncrypted = e.ClientSecretEncrypted,
+            IsActive = e.IsActive
+        }).ToList();
+    }
+
+    /// <summary>Creates environments from export data (restore backup; same machine so encrypted secrets are used as-is).</summary>
+    public async Task<int> ImportFromExportAsync(IEnumerable<EnvironmentExportDto> data)
+    {
+        var created = 0;
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        foreach (var dto in data)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Name) || string.IsNullOrWhiteSpace(dto.Url)) continue;
+            var env = new Models.Environment
+            {
+                Name = dto.Name.Trim(),
+                Url = dto.Url.Trim(),
+                TenantId = dto.TenantId ?? string.Empty,
+                ApplicationId = dto.ApplicationId ?? string.Empty,
+                ClientSecretEncrypted = dto.ClientSecretEncrypted ?? string.Empty,
+                IsActive = dto.IsActive,
+                CreatedAt = DateTime.UtcNow
+            };
+            db.Environments.Add(env);
+            created++;
+        }
+        await db.SaveChangesAsync();
+        _logger.LogInformation("Imported {Count} environment(s) from backup", created);
+        return created;
     }
 
     public string GetDecryptedSecret(Models.Environment env)

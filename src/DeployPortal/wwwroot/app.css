@@ -58,3 +58,15 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* Packages page: drop zone */
+.packages-drop-zone {
+    border: 2px dashed rgba(0, 0, 0, 0.12);
+    border-radius: 8px;
+    padding: 8px;
+    transition: border-color 0.2s, background-color 0.2s;
+}
+.packages-drop-zone.packages-drop-zone-active {
+    border-color: var(--mud-palette-primary-main, #594ae2);
+    background-color: rgba(89, 74, 226, 0.04);
+}

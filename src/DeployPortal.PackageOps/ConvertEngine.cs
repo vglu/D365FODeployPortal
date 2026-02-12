@@ -541,14 +541,14 @@ public class ConvertEngine
 
     /// <summary>
     /// Finds a direct subdirectory of parent with the given name (case-insensitive).
-    /// Used so AOSService is found on Linux Docker where filesystem is case-sensitive.
+    /// On Linux, zip entries with backslash (Windows) create dirs like "AOSService\Packages"; match by logical name.
     /// </summary>
     private static string? FindSubdirectory(string parentDir, string name)
     {
         if (!Directory.Exists(parentDir)) return null;
-        var found = Directory.GetDirectories(parentDir)
-            .FirstOrDefault(d => string.Equals(Path.GetFileName(d), name, StringComparison.OrdinalIgnoreCase));
-        return found;
+        return FileHelper.FindChildDirectory(parentDir, name)
+            ?? Directory.GetDirectories(parentDir)
+                .FirstOrDefault(d => string.Equals(Path.GetFileName(d), name, StringComparison.OrdinalIgnoreCase));
     }
 
     internal static List<(string FileName, string FullPath)> ExtractLicenseFiles(string extractedLcsDir)

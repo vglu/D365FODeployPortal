@@ -1,8 +1,10 @@
 @page "/environments"
 @inject EnvironmentService EnvService
+@inject HttpClient Http
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <PageTitle>Environments</PageTitle>
 
@@ -13,6 +15,16 @@
                StartIcon="@Icons.Material.Filled.Key"
                OnClick="@(() => _spGuideDialogVisible = true)">
         SP Setup Guide
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Default"
+               StartIcon="@Icons.Material.Filled.Download"
+               OnClick="@ExportEnvironments" Disabled="@(_environments.Count == 0)">
+        Export
+    </MudButton>
+    <MudButton Variant="Variant.Outlined" Color="Color.Default"
+               StartIcon="@Icons.Material.Filled.Upload"
+               OnClick="@(() => _importBackupDialogVisible = true)">
+        Import backup
     </MudButton>
     <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
                StartIcon="@Icons.Material.Filled.ContentPaste"
@@ -269,6 +281,43 @@
     </DialogActions>
 </MudDialog>
 
+@* ===== IMPORT BACKUP (JSON) DIALOG ===== *@
+<MudDialog @bind-Visible="_importBackupDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Upload" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">Import from backup</MudText>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            Upload a previously exported environments JSON file. All environments from the file will be added (same machine backup restore).
+        </MudText>
+        <MudFileUpload T="IReadOnlyList<IBrowserFile>" FilesChanged="@OnImportBackupFileSelected" Accept=".json" MaximumFileCount="1">
+            <ActivatorContent>
+                <MudButton Variant="Variant.Outlined" FullWidth="true" StartIcon="@Icons.Material.Filled.FolderOpen">
+                    Select JSON file
+                </MudButton>
+            </ActivatorContent>
+        </MudFileUpload>
+        @if (!string.IsNullOrEmpty(_importBackupError))
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3" Dense="true">@_importBackupError</MudAlert>
+        }
+        @if (_importBackupCount > 0)
+        {
+            <MudAlert Severity="Severity.Success" Class="mt-3" Dense="true">@_importBackupCount environment(s) will be imported.</MudAlert>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => { _importBackupDialogVisible = false; _importBackupError = null; _importBackupCount = 0; })">Close</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@DoImportBackup"
+                   Disabled="@(_importBackupData == null)" StartIcon="@Icons.Material.Filled.Upload">
+            Import
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
 @* ===== SP SETUP GUIDE DIALOG ===== *@
 <MudDialog @bind-Visible="_spGuideDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseOnEscapeKey = true }">
     <TitleContent>
@@ -431,6 +480,12 @@ pac auth who</MudPaper>
     private string _importManualUrl = "";
     private bool _importCreating;
 
+    // Import backup (JSON)
+    private bool _importBackupDialogVisible;
+    private List<DeployPortal.Models.Api.EnvironmentExportDto>? _importBackupData;
+    private string? _importBackupError;
+    private int _importBackupCount;
+
     // ===== Lifecycle =====
     protected override async Task OnInitializedAsync() => await LoadData();
 
@@ -500,6 +555,54 @@ pac auth who</MudPaper>
             await LoadData();
         }
         catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+    }
+
+    // ===== Export / Import backup =====
+    private async Task ExportEnvironments()
+    {
+        try
+        {
+            var count = _environments.Count;
+            var url = Nav.ToAbsoluteUri("/api/environments/export").ToString();
+            await JS.InvokeVoidAsync("open", url, "_blank");
+            Snackbar.Add($"Export started ({count} environment(s)).", Severity.Success);
+        }
+        catch (Exception ex) { Snackbar.Add($"Export failed: {ex.Message}", Severity.Error); }
+    }
+
+    private async Task OnImportBackupFileSelected(IReadOnlyList<IBrowserFile> files)
+    {
+        _importBackupError = null;
+        _importBackupData = null;
+        _importBackupCount = 0;
+        if (files == null || files.Count == 0) { StateHasChanged(); return; }
+        var file = files[0];
+        try
+        {
+            await using var stream = file.OpenReadStream(maxAllowedSize: 512 * 1024);
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            _importBackupData = System.Text.Json.JsonSerializer.Deserialize<List<DeployPortal.Models.Api.EnvironmentExportDto>>(json);
+            _importBackupCount = _importBackupData?.Count ?? 0;
+            if (_importBackupCount == 0) _importBackupError = "No valid environments in file.";
+        }
+        catch (Exception ex) { _importBackupError = ex.Message; }
+        StateHasChanged();
+    }
+
+    private async Task DoImportBackup()
+    {
+        if (_importBackupData == null || _importBackupData.Count == 0) return;
+        try
+        {
+            var created = await EnvService.ImportFromExportAsync(_importBackupData);
+            Snackbar.Add($"{created} environment(s) imported.", Severity.Success);
+            _importBackupDialogVisible = false;
+            _importBackupData = null;
+            _importBackupCount = 0;
+            await LoadData();
+        }
+        catch (Exception ex) { _importBackupError = ex.Message; }
     }
 
     // ===== Import =====
