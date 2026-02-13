@@ -2,6 +2,9 @@
 @implements IDisposable
 @inject PackageService PkgService
 @inject MergeService MergeSvc
+@inject AzureDevOpsBuildService BuildService
+@inject SettingsService SettingsSvc
+@inject SecretProtectionService SecretSvc
 @inject NavigationManager NavManager
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
@@ -29,6 +32,11 @@
                        StartIcon="@Icons.Material.Filled.CloudUpload"
                        OnClick="@OpenFilePicker" Disabled="@_uploading">
                 @(_uploading ? _uploadProgress : "Select ZIP file(s)")
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Build"
+                       OnClick="@OpenLoadFromBuildDialog" Disabled="@_uploading">
+                Load from build
             </MudButton>
         </MudStack>
         <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">or drag and drop .zip files here</MudText>
@@ -99,7 +107,7 @@
                 {
                     <MudIconButton Icon="@(_expandedRows.Contains(context.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
                                    Size="Size.Small" OnClick="@(() => ToggleExpand(context.Id))"
-                                   Title="Show source packages" />
+                                   title="Show source packages" />
                 }
                 <span>@context.Name</span>
             </MudStack>
@@ -349,6 +357,191 @@
     </DialogActions>
 </MudDialog>
 
+@* Load from build dialog — Step 1: select build, Step 2: select artifacts *@
+<MudDialog @bind-Visible="_loadFromBuildVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true })">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIcon Icon="@Icons.Material.Filled.Build" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Load package(s) from Azure DevOps build</MudText>
+            @if (_loadFromBuildStep == 2)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Secondary">Step 2: Artifacts</MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default">Step 1: Select build</MudChip>
+            }
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_loadFromBuildStep == 1)
+        {
+                <MudStack Spacing="2">
+                <MudStack Row="true" Spacing="2">
+                    <MudTextField T="string" Value="@_buildOrg" ValueChanged="OnOrganizationInputChanged"
+                                 Label="Organization" Placeholder="org or build URL"
+                                 Variant="Variant.Outlined" Immediate="true" Style="min-width:140px" />
+                    <MudTextField @bind-Value="_buildProject" Label="Project" Variant="Variant.Outlined" Immediate="true" Style="min-width:200px" />
+                </MudStack>
+                @* PAT: saved or enter new *@
+                @if (_hasSavedPat && !_showPatField)
+                {
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText Typo="Typo.body2">PAT: @_savedPatMasked</MudText>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => { _showPatField = true; })">Change</MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="@ClearSavedPat">Clear saved</MudButton>
+                    </MudStack>
+                }
+                @if (_showPatField || !_hasSavedPat)
+                {
+                    <MudTextField @bind-Value="_buildPat" Label="Personal Access Token (PAT)" Placeholder="PAT with Build (Read) scope"
+                                 Variant="Variant.Outlined" InputType="InputType.Password" Immediate="true"
+                                 Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Lock" />
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudCheckBox @bind-Value="_savePatChecked" T="bool" Label="Save PAT for next time" />
+                        @if (_hasSavedPat)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => { _showPatField = false; })">Use saved instead</MudButton>
+                        }
+                    </MudStack>
+                }
+                @if (!string.IsNullOrEmpty(_buildParseError))
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true" CloseIconClicked="@(() => _buildParseError = "")">@_buildParseError</MudAlert>
+                }
+                <MudDivider />
+                <MudText Typo="Typo.subtitle2">Filters (optional)</MudText>
+                <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                    <MudTextField @bind-Value="_filterPipelineName" Label="Pipeline name" Placeholder="Part of name"
+                                 Variant="Variant.Outlined" Immediate="true" Style="min-width:180px" Clearable="true" />
+                    <MudDatePicker @bind-Date="_filterDateFrom" Label="Date from" Variant="Variant.Outlined" DateFormat="yyyy-MM-dd" Clearable="true" />
+                    <MudDatePicker @bind-Date="_filterDateTo" Label="Date to" Variant="Variant.Outlined" DateFormat="yyyy-MM-dd" Clearable="true" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search"
+                               OnClick="@OnLoadBuilds" Disabled="@(_loadingBuilds || !HasEffectivePat())">
+                        @(_loadingBuilds ? "Loading..." : "Search builds")
+                    </MudButton>
+                </MudStack>
+                <MudAlert Severity="Severity.Info" Dense="true">
+                    Showing last 10 completed builds. Use filters (pipeline name, date) to find the build you need.
+                </MudAlert>
+                @if (_builds.Count > 0)
+                {
+                    <MudTable T="BuildInfo" Items="@_builds" Dense="true" Hover="true" Breakpoint="Breakpoint.None" Style="max-height:280px; overflow:auto">
+                        <HeaderContent>
+                            <MudTh>Build #</MudTh>
+                            <MudTh>Pipeline</MudTh>
+                            <MudTh>Project</MudTh>
+                            <MudTh>Result</MudTh>
+                            <MudTh>Finished</MudTh>
+                            <MudTh Style="width:100px">Action</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="Build #">@context.BuildNumber</MudTd>
+                            <MudTd DataLabel="Pipeline">@context.DefinitionName</MudTd>
+                            <MudTd DataLabel="Project">@context.ProjectName</MudTd>
+                            <MudTd DataLabel="Result">
+                                <MudChip T="string" Size="Size.Small" Color="@(context.Result == "succeeded" ? Color.Success : context.Result == "failed" ? Color.Error : Color.Default)">
+                                    @context.Result
+                                </MudChip>
+                            </MudTd>
+                            <MudTd DataLabel="Finished">@FormatBuildDate(context.FinishTime)</MudTd>
+                            <MudTd DataLabel="Action">
+                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="@(() => SelectBuildAndLoadArtifacts(context))">
+                                    Select
+                                </MudButton>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                }
+            </MudStack>
+        }
+        else
+        {
+            @* Step 2: artifacts for selected build *@
+            @if (_selectedBuild != null)
+            {
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                    Build: <strong>@_selectedBuild.BuildNumber</strong> — @_selectedBuild.DefinitionName
+                </MudAlert>
+                <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Class="mb-2"
+                           OnClick="@BackToBuildList">Back to build list</MudButton>
+            }
+            @if (_loadingArtifacts)
+            {
+                <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mb-3" />
+            }
+            @if (!string.IsNullOrEmpty(_buildParseError))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mb-3" CloseIconClicked="@(() => _buildParseError = "")">@_buildParseError</MudAlert>
+            }
+            @if (_buildArtifacts.Count > 0)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Select artifacts or files inside (up to 8 levels):</MudText>
+                <MudPaper Outlined="true" Class="pa-2 mb-2" Style="max-height:320px; overflow-y:auto">
+                    <MudTreeView T="string" Dense="true" Hover="true">
+                    <MudTreeViewItem Text="Artifacts" Expanded="true" CanExpand="true">
+                        <ChildContent>
+                            @foreach (var a in _buildArtifacts)
+                            {
+                                var artifactName = a.Name;
+                                var cacheCount = _artifactContentsCache.TryGetValue(artifactName, out var cachedList) ? cachedList.Count : 0;
+                                <MudTreeViewItem T="string" Value="@artifactName" CanExpand="true" @key="@($"{artifactName}-{cacheCount}")"
+                                                Expanded="@_expandedArtifacts.Contains(artifactName)"
+                                                ExpandedChanged="@(async (bool expanded) => await OnArtifactExpanded(artifactName, expanded))">
+                                    <Content>
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                            <span @onclick="@((_) => { })" @onclick:stopPropagation="true">
+                                                <MudIconButton Icon="@(_expandedArtifacts.Contains(artifactName) ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ChevronRight)"
+                                                              Size="Size.Small" OnClick="@(async () => await ToggleArtifactExpand(artifactName))"
+                                                              title="@(_expandedArtifacts.Contains(artifactName) ? "Collapse" : "Expand to see files")" />
+                                            </span>
+                                            <MudCheckBox T="bool" Value="@_selectedArtifactNames.Contains(artifactName)"
+                                                        ValueChanged="@(v => { if (v) _selectedArtifactNames.Add(artifactName); else _selectedArtifactNames.Remove(artifactName); StateHasChanged(); })" />
+                                            <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Color="Color.Default" />
+                                            <MudText Typo="Typo.body2">@artifactName</MudText>
+                                        </MudStack>
+                                    </Content>
+                                    <ChildContent>
+                                        @if (_loadingContentsFor == artifactName)
+                                        {
+                                            <MudStack Row="true" AlignItems="AlignItems.Center" Class="pl-4"><MudProgressCircular Size="Size.Small" Indeterminate="true" /> <MudText Typo="Typo.body2">Loading...</MudText></MudStack>
+                                        }
+                                        else if (_artifactContentsCache.TryGetValue(artifactName, out var nodes) && nodes.Count > 0)
+                                        {
+                                            @foreach (var node in nodes.OrderBy(n => n.IsFolder ? 0 : 1).ThenBy(n => n.Name))
+                                            {
+                                                <ArtifactTreeNode ArtifactName="@artifactName" Node="node" SelectedKeys="_selectedArtifactNames"
+                                                                SelectionChanged="OnArtifactNodeSelectionChanged" />
+                                            }
+                                        }
+                                    </ChildContent>
+                                </MudTreeViewItem>
+                            }
+                        </ChildContent>
+                    </MudTreeViewItem>
+                    </MudTreeView>
+                </MudPaper>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_loadFromBuildStep == 2)
+        {
+            <MudButton OnClick="@BackToBuildList">Back</MudButton>
+        }
+        <MudButton OnClick="@(() => _loadFromBuildVisible = false)">Cancel</MudButton>
+        @if (_loadFromBuildStep == 2)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="@OnDownloadFromBuildAndAdd"
+                       Disabled="@(_downloadingFromBuild || _selectedArtifactNames.Count == 0)">
+                @(_downloadingFromBuild ? "Downloading..." : "Download and add")
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
 @* Hidden license file upload *@
 <MudFileUpload @ref="_licFileUpload" T="IReadOnlyList<IBrowserFile>" FilesChanged="@OnLicenseFilesSelected"
                Accept=".txt,.xml" Hidden="true" MaximumFileCount="20" />
@@ -382,6 +575,309 @@
     private string _mergeName = "";
     private string? _mergeStrategy;
     private List<Package> _mergePackages = new();
+
+    // Load from build dialog
+    private bool _loadFromBuildVisible;
+    private int _loadFromBuildStep = 1;
+    private string _buildPat = "";
+    private string _buildParseError = "";
+    private string _buildOrg = "";
+    private string _buildProject = "";
+    private int _buildId;
+    private List<BuildInfo> _builds = new();
+    private BuildInfo? _selectedBuild;
+    private List<BuildArtifactInfo> _buildArtifacts = new();
+    private HashSet<string> _selectedArtifactNames = new();
+    private Dictionary<string, List<ArtifactNode>> _artifactContentsCache = new();
+    private HashSet<string> _expandedArtifacts = new();
+    private string? _loadingContentsFor;
+    private bool _loadingArtifacts;
+    private bool _loadingBuilds;
+    private bool _downloadingFromBuild;
+    private bool _hasSavedPat;
+    private bool _showPatField;
+    private string _savedPatMasked = "";
+    private bool _savePatChecked;
+    private string _filterPipelineName = "";
+    private DateTime? _filterDateFrom;
+    private DateTime? _filterDateTo;
+    private void OnOrganizationInputChanged(string value)
+    {
+        var url = (value ?? "").Trim();
+        if ((url.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            && (url.Contains("visualstudio.com", StringComparison.OrdinalIgnoreCase) || url.Contains("dev.azure.com", StringComparison.OrdinalIgnoreCase))
+            && url.Contains("_build", StringComparison.OrdinalIgnoreCase)
+            && AzureDevOpsBuildService.TryParseBuildUrl(url, out var org, out var project, out _))
+        {
+            _buildOrg = org;
+            _buildProject = project;
+            _buildParseError = "";
+        }
+        else
+        {
+            _buildOrg = value ?? "";
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenLoadFromBuildDialog()
+    {
+        _loadFromBuildStep = 1;
+        _buildOrg = SettingsSvc.AzureDevOpsOrganization ?? "";
+        _buildProject = SettingsSvc.AzureDevOpsProject ?? "";
+        _buildPat = "";
+        _buildParseError = "";
+        _builds.Clear();
+        _selectedBuild = null;
+        _buildArtifacts.Clear();
+        _selectedArtifactNames.Clear();
+        _filterPipelineName = "";
+        _filterDateFrom = null;
+        _filterDateTo = null;
+        _hasSavedPat = !string.IsNullOrEmpty(SettingsSvc.AzureDevOpsPatEncrypted);
+        _showPatField = false;
+        _savePatChecked = false;
+        try
+        {
+            _savedPatMasked = _hasSavedPat ? SecretProtectionService.MaskSecret(SecretSvc.Decrypt(SettingsSvc.AzureDevOpsPatEncrypted)) : "";
+        }
+        catch { _savedPatMasked = "****"; }
+        _loadFromBuildVisible = true;
+    }
+
+    private string? GetEffectivePat()
+    {
+        if (!string.IsNullOrWhiteSpace(_buildPat)) return _buildPat.Trim();
+        if (!_hasSavedPat || string.IsNullOrEmpty(SettingsSvc.AzureDevOpsPatEncrypted)) return null;
+        try { return SecretSvc.Decrypt(SettingsSvc.AzureDevOpsPatEncrypted); }
+        catch { return null; }
+    }
+
+    private bool HasEffectivePat() => !string.IsNullOrEmpty(GetEffectivePat());
+
+    private void ClearSavedPat()
+    {
+        SettingsSvc.SaveAzureDevOpsSettings("", null, null);
+        _hasSavedPat = false;
+        _savedPatMasked = "";
+        _buildPat = "";
+        _showPatField = true;
+        StateHasChanged();
+    }
+
+    private static string FormatBuildDate(string finishTime)
+    {
+        if (string.IsNullOrEmpty(finishTime)) return "";
+        if (DateTime.TryParse(finishTime, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return dt.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        return finishTime;
+    }
+
+    private async Task OnLoadBuilds()
+    {
+        var pat = GetEffectivePat();
+        if (string.IsNullOrEmpty(pat) || string.IsNullOrWhiteSpace(_buildOrg) || string.IsNullOrWhiteSpace(_buildProject))
+        {
+            _buildParseError = "Enter Organization, Project, and PAT (or use saved PAT).";
+            return;
+        }
+        _buildParseError = "";
+        _loadingBuilds = true;
+        StateHasChanged();
+        try
+        {
+            var minTime = _filterDateFrom.HasValue ? (DateTime?)_filterDateFrom.Value.Date : null;
+            var maxTime = _filterDateTo.HasValue ? (DateTime?)_filterDateTo.Value.Date.AddDays(1).AddTicks(-1) : null;
+            _builds = await BuildService.ListBuildsAsync(_buildOrg.Trim(), _buildProject.Trim(), pat, top: 10,
+                definitionIds: null, definitionNameFilter: string.IsNullOrWhiteSpace(_filterPipelineName) ? null : _filterPipelineName.Trim(),
+                minTime: minTime, maxTime: maxTime);
+            if (_builds.Count == 0)
+                Snackbar.Add("No completed builds found. Try different filters.", Severity.Info);
+            if (_savePatChecked && !string.IsNullOrWhiteSpace(_buildPat))
+            {
+                SettingsSvc.SaveAzureDevOpsSettings(SecretSvc.Encrypt(_buildPat.Trim()), _buildOrg.Trim(), _buildProject.Trim());
+                _hasSavedPat = true;
+                _savedPatMasked = SecretProtectionService.MaskSecret(_buildPat.Trim());
+                _showPatField = false;
+                _savePatChecked = false;
+                Snackbar.Add("PAT and project saved.", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            _buildParseError = ex.Message;
+            _builds.Clear();
+        }
+        finally
+        {
+            _loadingBuilds = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectBuildAndLoadArtifacts(BuildInfo build)
+    {
+        var pat = GetEffectivePat();
+        if (string.IsNullOrEmpty(pat)) return;
+        _selectedBuild = build;
+        _buildId = build.Id;
+        _buildParseError = "";
+        _loadingArtifacts = true;
+        _loadFromBuildStep = 2;
+        StateHasChanged();
+        try
+        {
+            _buildArtifacts = await BuildService.ListArtifactsAsync(_buildOrg, _buildProject, build.Id, pat);
+            _selectedArtifactNames.Clear();
+            if (_buildArtifacts.Count == 0)
+                Snackbar.Add("No artifacts in this build.", Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            _buildParseError = ex.Message;
+            _buildArtifacts.Clear();
+        }
+        finally
+        {
+            _loadingArtifacts = false;
+            StateHasChanged();
+        }
+    }
+
+    private void BackToBuildList()
+    {
+        _loadFromBuildStep = 1;
+        _selectedBuild = null;
+        _buildArtifacts.Clear();
+        _selectedArtifactNames.Clear();
+        _artifactContentsCache.Clear();
+        _expandedArtifacts.Clear();
+        _loadingContentsFor = null;
+        _buildParseError = "";
+        StateHasChanged();
+    }
+
+    private async Task ToggleArtifactExpand(string artifactName)
+    {
+        await OnArtifactExpanded(artifactName, !_expandedArtifacts.Contains(artifactName));
+    }
+
+    private async Task OnArtifactExpanded(string artifactName, bool expanded)
+    {
+        if (expanded)
+            _expandedArtifacts.Add(artifactName);
+        else
+            _expandedArtifacts.Remove(artifactName);
+        if (expanded && !_artifactContentsCache.ContainsKey(artifactName))
+        {
+            var pat = GetEffectivePat();
+            if (string.IsNullOrEmpty(pat)) return;
+            _loadingContentsFor = artifactName;
+            StateHasChanged();
+            try
+            {
+                var nodes = await BuildService.GetArtifactContentsAsync(_buildOrg, _buildProject, _buildId, artifactName, pat, maxDepth: 8);
+                _artifactContentsCache[artifactName] = nodes;
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Could not load contents of '{artifactName}': {ex.Message}", Severity.Warning);
+                _artifactContentsCache[artifactName] = new List<ArtifactNode>();
+            }
+            finally
+            {
+                _loadingContentsFor = null;
+                StateHasChanged();
+            }
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnArtifactNodeSelectionChanged((string key, bool selected) evt)
+    {
+        if (evt.selected)
+            _selectedArtifactNames.Add(evt.key);
+        else
+            _selectedArtifactNames.Remove(evt.key);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnDownloadFromBuildAndAdd()
+    {
+        var toDownload = _selectedArtifactNames.ToList();
+        if (toDownload.Count == 0) return;
+        var pat = GetEffectivePat();
+        if (string.IsNullOrEmpty(pat)) { Snackbar.Add("PAT is required.", Severity.Warning); return; }
+        _downloadingFromBuild = true;
+        StateHasChanged();
+        var added = 0;
+        var fail = 0;
+        try
+        {
+            var devOpsUrl = $"https://dev.azure.com/{Uri.EscapeDataString(_buildOrg)}/{Uri.EscapeDataString(_buildProject)}/_build/results?buildId={_buildId}";
+            try
+            {
+                var workItems = await BuildService.GetBuildWorkItemsRefsAsync(_buildOrg, _buildProject, _buildId, pat, top: 1);
+                if (workItems.Count > 0 && !string.IsNullOrEmpty(workItems[0].Url))
+                    devOpsUrl = workItems[0].Url;
+            }
+            catch { /* fallback to build URL */ }
+            foreach (var key in toDownload)
+            {
+                try
+                {
+                    Stream stream;
+                    string fileName;
+                    var pipe = key.IndexOf('|');
+                    if (pipe >= 0)
+                    {
+                        var artifactName = key[..pipe];
+                        var relativePath = key[(pipe + 1)..];
+                        var isFolder = relativePath.EndsWith("/");
+                        if (isFolder)
+                            relativePath = relativePath.TrimEnd('/');
+                        if (isFolder)
+                        {
+                            stream = await BuildService.DownloadArtifactFolderAsZipAsync(_buildOrg, _buildProject, _buildId, artifactName, relativePath, pat);
+                            var folderName = Path.GetFileName(relativePath.TrimEnd('/'));
+                            if (string.IsNullOrEmpty(folderName)) folderName = relativePath.Replace("/", "_");
+                            fileName = folderName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? folderName : folderName + ".zip";
+                        }
+                        else
+                        {
+                            stream = await BuildService.DownloadArtifactEntryAsync(_buildOrg, _buildProject, _buildId, artifactName, relativePath, pat);
+                            fileName = Path.GetFileName(relativePath);
+                            if (string.IsNullOrEmpty(fileName)) fileName = key.Replace("|", "_") + ".zip";
+                        }
+                    }
+                    else
+                    {
+                        stream = await BuildService.DownloadArtifactAsync(_buildOrg, _buildProject, _buildId, key, pat);
+                        fileName = key.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? key : key + ".zip";
+                    }
+                    await using (stream)
+                        await PkgService.UploadAsync(fileName, stream, devOpsTaskUrl: devOpsUrl);
+                    added++;
+                }
+                catch (Exception ex)
+                {
+                    fail++;
+                    Snackbar.Add($"'{key}': {ex.Message}", Severity.Error);
+                }
+            }
+            if (added > 0)
+            {
+                Snackbar.Add(added == 1 ? "1 package added from build." : $"{added} packages added from build.", Severity.Success);
+                _loadFromBuildVisible = false;
+                await LoadData();
+            }
+        }
+        finally
+        {
+            _downloadingFromBuild = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task OpenFilePicker()
     {
@@ -761,13 +1257,48 @@
 
     private async Task DeletePackage(Package pkg)
     {
-        var result = await DialogService.ShowMessageBox("Delete Package",
-            $"Delete '{pkg.Name}'?", yesText: "Delete", cancelText: "Cancel");
+        // First, check if package is used in deployments
+        var (deploymentsCount, envNames) = await PkgService.GetPackageUsageAsync(pkg.Id);
+
+        if (deploymentsCount > 0)
+        {
+            // Show informative message about package usage
+            var envList = string.Join(", ", envNames.Take(5));
+            if (envNames.Count > 5)
+                envList += $" and {envNames.Count - 5} more";
+
+            var message = deploymentsCount == 1
+                ? $"This package is used in 1 deployment (environment: {envList}).\n\n" +
+                  "You must delete the deployment before you can delete this package."
+                : $"This package is used in {deploymentsCount} deployments across these environments:\n{envList}\n\n" +
+                  "You must delete all related deployments before you can delete this package.";
+
+            await DialogService.ShowMessageBox(
+                "Cannot Delete Package",
+                message,
+                yesText: "OK");
+            return;
+        }
+
+        // Package is not used, confirm deletion
+        var result = await DialogService.ShowMessageBox(
+            "Delete Package",
+            $"Are you sure you want to delete '{pkg.Name}'?\n\nThis action cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
         if (result == true)
         {
-            await PkgService.DeleteAsync(pkg.Id);
-            Snackbar.Add("Package deleted.", Severity.Info);
-            await LoadData();
+            try
+            {
+                await PkgService.DeleteAsync(pkg.Id);
+                Snackbar.Add("Package deleted successfully.", Severity.Success);
+                await LoadData();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete package: {ex.Message}", Severity.Error);
+            }
         }
     }
 

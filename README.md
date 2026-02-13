@@ -176,6 +176,7 @@ All settings can be configured via environment variables in `docker-compose.yml`
 | `DeployPortal__PackageStoragePath` | `/app/packages` | Package storage directory |
 | `DeployPortal__TempWorkingDir` | `/tmp/DeployPortal` | Temporary directory for merge/convert |
 | `DeployPortal__DataProtectionKeysPath` | `/app/data/keys` | Encryption keys directory |
+| `DeployPortal__UserSettingsPath` | `/app/data/usersettings.json` | UI settings file (in volume so they persist) |
 | `DeployPortal__ConverterEngine` | `BuiltIn` | Converter engine (`BuiltIn` or `ModelUtil`) |
 | `DeployPortal__ProcessingMode` | `Local` | Processing mode (`Local` or `Azure`) |
 
@@ -342,7 +343,7 @@ This output can be pasted directly into the **Import from Script** dialog on the
 
 ### Settings Priority
 
-1. **UI Settings** (`usersettings.json` next to exe) — highest priority, managed via Settings page
+1. **UI Settings** (`usersettings.json`) — highest priority, managed via Settings page. Path: `%LocalAppData%\DeployPortal\usersettings.json` (Windows) or set `DeployPortal:UserSettingsPath` (e.g. in Docker: `/app/data/usersettings.json` so it’s in the volume).
 2. **appsettings.json** — default values
 3. **Built-in defaults** — auto-detection (PAC from PATH, storage in app directory)
 
@@ -355,6 +356,7 @@ This output can be pasted directly into the **Import from Script** dialog on the
 | `PackageStoragePath` | Directory for uploaded packages | `<app directory>/Packages` |
 | `TempWorkingDir` | Temp directory for merge/convert | `%TEMP%/DeployPortal` |
 | `DatabasePath` | Path to SQLite database file | `<app directory>/deploy-portal.db` |
+| `UserSettingsPath` | Path to UI settings JSON file (optional; if not set, uses `%LocalAppData%\DeployPortal\usersettings.json`) | *(empty)* |
 | `LcsTemplatePath` | Optional path to LCS template (folder or .zip) for **Unified→LCS** conversion | *(empty)* |
 
 ### LCS template (Unified→LCS)
@@ -462,6 +464,10 @@ You can call the API from a pipeline to upload a package, convert it, or downloa
 ```
 
 For **merge** in a pipeline, POST to `/api/packages/merge` with a JSON body containing `packageIds` and optional `mergeName`, then use the returned package `id` for deploy or download.
+
+### Deploy via Release Pipeline (Universal Package)
+
+To upload a package to Azure Artifacts (Universal Package) and start an Azure DevOps Release from the portal or from a script, see **[docs/Release-Pipeline-Universal-Package.md](docs/Release-Pipeline-Universal-Package.md)** — setup of the Release artifact (Azure Artifacts / Universal), feed name, script usage, and troubleshooting.
 
 ## Package Types
 

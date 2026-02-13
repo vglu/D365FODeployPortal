@@ -44,9 +44,9 @@ public class EnvironmentService
         {
             Name = name,
             Url = url,
-            TenantId = tenantId,
-            ApplicationId = applicationId,
-            ClientSecretEncrypted = _secretService.Encrypt(clientSecret),
+            TenantId = tenantId ?? string.Empty,
+            ApplicationId = applicationId ?? string.Empty,
+            ClientSecretEncrypted = string.IsNullOrEmpty(clientSecret) ? string.Empty : _secretService.Encrypt(clientSecret),
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -55,7 +55,7 @@ public class EnvironmentService
         db.Environments.Add(env);
         await db.SaveChangesAsync();
 
-        _logger.LogInformation("Environment created: {Name} ({Url})", env.Name, env.Url);
+        _logger.LogInformation("Environment created: {Name} ({Url}), SP={HasSp}", env.Name, env.Url, env.HasServicePrincipal);
         return env;
     }
 
@@ -67,16 +67,16 @@ public class EnvironmentService
 
         env.Name = name;
         env.Url = url;
-        env.TenantId = tenantId;
-        env.ApplicationId = applicationId;
+        env.TenantId = tenantId ?? string.Empty;
+        env.ApplicationId = applicationId ?? string.Empty;
 
         if (!string.IsNullOrEmpty(newClientSecret))
-        {
             env.ClientSecretEncrypted = _secretService.Encrypt(newClientSecret);
-        }
+        else if (string.IsNullOrEmpty(applicationId))
+            env.ClientSecretEncrypted = string.Empty; // switching to interactive mode
 
         await db.SaveChangesAsync();
-        _logger.LogInformation("Environment updated: {Name}", env.Name);
+        _logger.LogInformation("Environment updated: {Name}, SP={HasSp}", env.Name, env.HasServicePrincipal);
     }
 
     public async Task ToggleActiveAsync(int id)
@@ -145,11 +145,13 @@ public class EnvironmentService
 
     public string GetDecryptedSecret(Models.Environment env)
     {
+        if (string.IsNullOrEmpty(env.ClientSecretEncrypted)) return string.Empty;
         return _secretService.Decrypt(env.ClientSecretEncrypted);
     }
 
     public string GetMaskedSecret(Models.Environment env)
     {
+        if (string.IsNullOrEmpty(env.ClientSecretEncrypted)) return "(Interactive sign-in)";
         try
         {
             var decrypted = _secretService.Decrypt(env.ClientSecretEncrypted);

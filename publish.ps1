@@ -62,10 +62,11 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Copy helper files
+# Copy helper files (including prerequisites script so it can be run from publish folder)
 $helperFiles = @(
     "Setup-ServicePrincipal.ps1",
-    "Setup-ServicePrincipal-Manual.md"
+    "Setup-ServicePrincipal-Manual.md",
+    "check-prerequisites.ps1"
 )
 
 foreach ($file in $helperFiles) {

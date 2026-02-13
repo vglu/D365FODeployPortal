@@ -2,11 +2,23 @@
 @inject PackageService PkgService
 @inject EnvironmentService EnvService
 @inject DeploymentOrchestrator Orchestrator
+@inject SettingsService SettingsSvc
+@inject SecretProtectionService SecretSvc
+@inject AzureDevOpsReleaseService ReleaseService
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject NavigationManager Nav
 @inject IDbContextFactory<AppDbContext> DbFactory
 
 <PageTitle>Deploy</PageTitle>
+
+@if (SettingsSvc.SimulateDeployment)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4" Dense="true">
+        <strong>Simulate deployment</strong> is on in Settings. Auth and connection check will run; package deploy will be skipped.
+        <MudLink Href="/settings" Typo="Typo.body2" Class="ml-2">Settings</MudLink>
+    </MudAlert>
+}
 
 <MudText Typo="Typo.h4" Class="mb-4">Deploy Package</MudText>
 
@@ -92,9 +104,9 @@
                     <MudSpacer />
                     <MudButtonGroup Size="Size.Small" Variant="Variant.Text" Color="Color.Default" Class="mr-2">
                         <MudIconButton Icon="@Icons.Material.Filled.SelectAll" OnClick="@SelectAllEnvs"
-                                       Title="Select all" Size="Size.Small" />
+                                       title="Select all" Size="Size.Small" />
                         <MudIconButton Icon="@Icons.Material.Filled.Deselect" OnClick="@DeselectAllEnvs"
-                                       Title="Deselect all" Size="Size.Small" />
+                                       title="Deselect all" Size="Size.Small" />
                     </MudButtonGroup>
                     <MudTextField @bind-Value="_envSearch" Placeholder="Search..." Variant="Variant.Outlined"
                                   Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
@@ -105,6 +117,7 @@
                     <MudTh Style="width:44px; padding:0"></MudTh>
                     <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Name)" InitialDirection="SortDirection.Ascending">Name</MudTableSortLabel></MudTh>
                     <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Url)">URL</MudTableSortLabel></MudTh>
+                    <MudTh Style="width:90px">Auth</MudTh>
                     <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.CreatedAt)">Created</MudTableSortLabel></MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -118,6 +131,12 @@
                     </MudTd>
                     <MudTd DataLabel="URL">
                         <span class="mud-text-secondary" style="font-size:0.85rem">@context.Url</span>
+                    </MudTd>
+                    <MudTd DataLabel="Auth">
+                        @if (context.HasServicePrincipal)
+                        { <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary">SP</MudChip> }
+                        else
+                        { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary">Interactive</MudChip> }
                     </MudTd>
                     <MudTd DataLabel="Created">
                         <MudTooltip Text="@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
@@ -169,13 +188,130 @@
                    OnClick="@StartDeploy">
             @(_deploying ? "Queuing..." : "Start Deploy")
         </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.AccountTree"
+                   Disabled="@(!_selectedPackageId.HasValue || _releaseDialogOpen)"
+                   OnClick="@OpenReleasePipelineDialog" title="Deploy selected package via Azure DevOps Release Pipeline">
+            Release Pipeline
+        </MudButton>
     </MudStack>
+    @if (_hasAnyInteractiveEnvSelected)
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mt-3">
+            One or more environments use interactive sign-in. When the deployment log appears, open the link shown (e.g. https://microsoft.com/devicelogin) and enter the code to sign in.
+        </MudAlert>
+    }
     <MudTextField @bind-Value="_deployDevOpsUrl" Label="Azure DevOps Task URL (optional, auto-filled from package)"
                   Placeholder="https://dev.azure.com/org/project/_workitems/edit/12345"
                   Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-3"
                   Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Link"
                   Clearable="true" />
 </MudPaper>
+
+@* Deploy via Release Pipeline dialog *@
+<MudDialog @bind-Visible="_releaseDialogOpen" Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">Deploy via Release Pipeline</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_releaseStep == 1)
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">Connect to Azure DevOps and select a Release Pipeline. PAT needs Release (Read &amp; execute) or manage.</MudText>
+            <MudTextField @bind-Value="_releaseOrg" Label="Organization" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+            <MudTextField @bind-Value="_releaseProject" Label="Project" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2" />
+            @if (_hasSavedReleasePat && !_showReleasePatField)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                    <MudText Typo="Typo.body2">PAT: @_savedReleasePatMasked</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@(() => { _showReleasePatField = true; })">Change</MudButton>
+                </MudStack>
+            }
+            @if (_showReleasePatField || !_hasSavedReleasePat)
+            {
+                <MudTextField @bind-Value="_releasePat" Label="Personal Access Token" InputType="InputType.Password" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"
+                              Placeholder="PAT with Release scope" />
+            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2"
+                       Disabled="@(string.IsNullOrWhiteSpace(GetReleaseEffectivePat()) || string.IsNullOrWhiteSpace(_releaseOrg) || string.IsNullOrWhiteSpace(_releaseProject) || _releaseLoadingPipelines)"
+                       OnClick="@LoadReleasePipelines">
+                @(_releaseLoadingPipelines ? "Loading..." : "Load pipelines")
+            </MudButton>
+            @if (!string.IsNullOrEmpty(_releaseError))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3" CloseIconClicked="@(() => _releaseError = "")">@_releaseError</MudAlert>
+            }
+            @if (_releasePipelines.Count > 0)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Select pipeline:</MudText>
+                <MudList T="string" Dense="true" Style="max-height:220px; overflow-y:auto">
+                    @foreach (var p in _releasePipelines)
+                    {
+                        <MudListItem T="string" OnClick="@(() => SelectReleasePipeline(p))">[@p.Id] @p.Name</MudListItem>
+                    }
+                </MudList>
+            }
+        }
+        @if (_releaseStep == 2 && _releaseDefinitionDetail != null)
+        {
+            <MudText Typo="Typo.body2" Class="mb-2">Pipeline: <strong>@_releaseDefinitionDetail.Name</strong></MudText>
+            <MudText Typo="Typo.subtitle2" Class="mb-2">Select artifact for Universal Package upload:</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+                Choose the Universal Package artifact. Other artifacts (e.g. Build) will use latest version automatically.
+            </MudText>
+            <MudRadioGroup T="string" @bind-Value="_releaseSelectedAlias">
+                @foreach (var art in _releaseDefinitionDetail.Artifacts)
+                {
+                    <MudRadio T="string" Value="@art.Alias" Color="Color.Primary">
+                        <MudText Typo="Typo.body2">
+                            @art.Alias 
+                            <MudChip T="string" Size="Size.Small" Color="@(art.Type == "Build" ? Color.Info : Color.Primary)" Class="ml-2">@art.Type</MudChip>
+                        </MudText>
+                    </MudRadio>
+                }
+            </MudRadioGroup>
+            @if (!string.IsNullOrEmpty(_releaseSelectedAlias))
+            {
+                <MudSelect T="string" @bind-Value="_releaseFeedFromList" Label="Feed name (Azure Artifacts)" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-3"
+                           Placeholder="Select feed" HelperText="Select existing feed or «Other» to type a name."
+                           OnClose="@SyncReleaseFeedFromSelect">
+                    @foreach (var name in _releaseFeedSelectOptions)
+                    {
+                        <MudSelectItem T="string" Value="@name">@(name == ReleaseFeedOtherOption ? "— Other (type below) —" : name)</MudSelectItem>
+                    }
+                </MudSelect>
+                @if (_releaseFeedFromList == ReleaseFeedOtherOption)
+                {
+                    <MudTextField @bind-Value="_releaseFeed" Label="Custom feed name" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Placeholder="e.g. Packages or MyFeed" />
+                }
+                <MudTextField @bind-Value="_releasePackageName" Label="Universal package name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudTextField @bind-Value="_releaseVersion" Label="Version (e.g. 1.0.0)" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                <MudAlert Severity="Severity.Info" Dense="true" Class="mt-2">Package: @(_selectedReleasePackage?.Name ?? "") — will be uploaded then release started. Requires Azure CLI (az) for upload.</MudAlert>
+                @if (_releaseUploading)
+                {
+                    <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
+                    <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">Extracting and uploading can take several minutes. Please wait, do not close the window.</MudAlert>
+                }
+            }
+            @if (!string.IsNullOrEmpty(_releaseError))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Class="mt-3" CloseIconClicked="@(() => _releaseError = "")">@_releaseError</MudAlert>
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_releaseStep == 2)
+        {
+            <MudButton OnClick="@(() => { _releaseStep = 1; _releaseError = ""; })">Back</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@(_releaseUploading || string.IsNullOrWhiteSpace(_releaseSelectedAlias) || string.IsNullOrWhiteSpace(GetReleaseFeedEffective()) || string.IsNullOrWhiteSpace(_releasePackageName) || string.IsNullOrWhiteSpace(_releaseVersion))"
+                       OnClick="@UploadAndStartRelease">
+                @(_releaseUploading ? "Uploading & starting..." : "Upload and Start Release")
+            </MudButton>
+        }
+        <MudButton OnClick="@CloseReleaseDialog">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
 
 @code {
     private List<Package> _packages = new();
@@ -188,7 +324,36 @@
     private string _envSearch = "";
     private string _deployDevOpsUrl = "";
 
+    // Release Pipeline dialog
+    private bool _releaseDialogOpen;
+    private int _releaseStep = 1;
+    private string _releaseOrg = "";
+    private string _releaseProject = "";
+    private string _releasePat = "";
+    private bool _hasSavedReleasePat;
+    private bool _showReleasePatField;
+    private string _savedReleasePatMasked = "";
+    private bool _releaseLoadingPipelines;
+    private string _releaseError = "";
+    private List<ReleaseDefinitionInfo> _releasePipelines = new();
+    private int? _releaseSelectedDefId;
+    private ReleaseDefinitionDetail? _releaseDefinitionDetail;
+    private string _releaseSelectedAlias = "";
+    private string _releaseFeed = "";
+    private string _releasePackageName = "";
+    private string _releaseVersion = "";
+    private bool _releaseUploading;
+    private List<string> _releaseFeedNames = new();
+    private string _releaseFeedFromList = "";
+    private const string ReleaseFeedOtherOption = "__Other__";
+    private IEnumerable<string> _releaseFeedSelectOptions => _releaseFeedNames.Concat(new[] { ReleaseFeedOtherOption });
+
     private bool _canDeploy => _selectedPackageId.HasValue && _selectedEnvIds.Any() && !_deploying;
+
+    private bool _hasAnyInteractiveEnvSelected => _selectedEnvIds.Any(id =>
+        _environments.FirstOrDefault(e => e.Id == id) is { } env && !env.HasServicePrincipal);
+
+    private Package? _selectedReleasePackage => _selectedPackageId.HasValue ? _packages.FirstOrDefault(p => p.Id == _selectedPackageId.Value) : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -272,8 +437,230 @@
             Snackbar.Add($"Queued for {_selectedEnvIds.Count} environment(s).", Severity.Success);
             Nav.NavigateTo("/deployments");
         }
-        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        catch (Exception ex) { Snackbar.Add($"Error: {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error); }
         finally { _deploying = false; }
+    }
+
+    // ===== Release Pipeline dialog =====
+    private void OpenReleasePipelineDialog()
+    {
+        _releaseStep = 1;
+        _releaseOrg = SettingsSvc.AzureDevOpsOrganization ?? "";
+        _releaseProject = SettingsSvc.AzureDevOpsProject ?? "";
+        _releasePat = "";
+        _releaseError = "";
+        _releasePipelines.Clear();
+        _releaseSelectedDefId = null;
+        _releaseDefinitionDetail = null;
+        _releaseSelectedAlias = "";
+        _releaseFeedNames.Clear();
+        _releaseFeedFromList = ReleaseFeedOtherOption;
+        _releaseFeed = string.IsNullOrWhiteSpace(SettingsSvc.ReleasePipelineFeedName) ? "Packages" : SettingsSvc.ReleasePipelineFeedName;
+        _releasePackageName = _selectedReleasePackage?.Name ?? "";
+        _releaseVersion = $"1.0.{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+        _hasSavedReleasePat = !string.IsNullOrEmpty(SettingsSvc.AzureDevOpsPatEncrypted);
+        _showReleasePatField = false;
+        try
+        {
+            _savedReleasePatMasked = _hasSavedReleasePat ? SecretProtectionService.MaskSecret(SecretSvc.Decrypt(SettingsSvc.AzureDevOpsPatEncrypted)) : "";
+        }
+        catch { _savedReleasePatMasked = "****"; }
+        _releaseDialogOpen = true;
+    }
+
+    private string? GetReleaseEffectivePat()
+    {
+        if (!string.IsNullOrWhiteSpace(_releasePat)) return _releasePat.Trim();
+        if (!_hasSavedReleasePat || string.IsNullOrEmpty(SettingsSvc.AzureDevOpsPatEncrypted)) return null;
+        try { return SecretSvc.Decrypt(SettingsSvc.AzureDevOpsPatEncrypted); }
+        catch { return null; }
+    }
+
+    private async Task LoadReleasePipelines()
+    {
+        var pat = GetReleaseEffectivePat();
+        if (string.IsNullOrEmpty(pat) || string.IsNullOrWhiteSpace(_releaseOrg) || string.IsNullOrWhiteSpace(_releaseProject))
+        {
+            _releaseError = "Enter Organization, Project, and PAT.";
+            return;
+        }
+        _releaseLoadingPipelines = true;
+        _releaseError = "";
+        StateHasChanged();
+        try
+        {
+            _releasePipelines = await ReleaseService.ListReleaseDefinitionsAsync(_releaseOrg.Trim(), _releaseProject.Trim(), pat);
+            if (_releasePipelines.Count == 0) _releaseError = "No release pipelines found.";
+        }
+        catch (Exception ex)
+        {
+            _releaseError = ExceptionHelper.GetDisplayMessage(ex);
+        }
+        finally
+        {
+            _releaseLoadingPipelines = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectReleasePipeline(ReleaseDefinitionInfo pipeline)
+    {
+        var pat = GetReleaseEffectivePat();
+        if (string.IsNullOrEmpty(pat)) return;
+        _releaseSelectedDefId = pipeline.Id;
+        _releaseError = "";
+        try
+        {
+            _releaseDefinitionDetail = await ReleaseService.GetReleaseDefinitionAsync(_releaseOrg.Trim(), _releaseProject.Trim(), pipeline.Id, pat);
+            if (_releaseDefinitionDetail == null || _releaseDefinitionDetail.Artifacts.Count == 0)
+            {
+                _releaseError = "Could not load pipeline details or no artifacts.";
+                return;
+            }
+            _releaseSelectedAlias = _releaseDefinitionDetail.Artifacts[0].Alias;
+            _releaseStep = 2;
+            await LoadReleaseFeedsAsync();
+        }
+        catch (Exception ex)
+        {
+            _releaseError = ExceptionHelper.GetDisplayMessage(ex);
+        }
+        StateHasChanged();
+    }
+
+    private async Task LoadReleaseFeedsAsync()
+    {
+        var pat = GetReleaseEffectivePat();
+        if (string.IsNullOrEmpty(pat) || string.IsNullOrWhiteSpace(_releaseOrg) || string.IsNullOrWhiteSpace(_releaseProject))
+            return;
+        StateHasChanged();
+        try
+        {
+            var projectFeeds = await ReleaseService.GetFeedNamesAsync(_releaseOrg.Trim(), _releaseProject.Trim(), pat);
+            var orgFeeds = await ReleaseService.GetFeedNamesOrgLevelAsync(_releaseOrg.Trim(), pat);
+            var combined = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var f in projectFeeds) combined.Add(f);
+            foreach (var f in orgFeeds) combined.Add(f);
+            _releaseFeedNames = combined.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+            _releaseFeedFromList = _releaseFeedNames.Contains(_releaseFeed, StringComparer.OrdinalIgnoreCase)
+                ? _releaseFeedNames.First(f => string.Equals(f, _releaseFeed, StringComparison.OrdinalIgnoreCase))
+                : ReleaseFeedOtherOption;
+        }
+        catch
+        {
+            _releaseFeedNames = new List<string>();
+            _releaseFeedFromList = ReleaseFeedOtherOption;
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void SyncReleaseFeedFromSelect()
+    {
+        if (!string.IsNullOrEmpty(_releaseFeedFromList) && _releaseFeedFromList != ReleaseFeedOtherOption)
+            _releaseFeed = _releaseFeedFromList;
+    }
+
+    private string GetReleaseFeedEffective() => _releaseFeedFromList == ReleaseFeedOtherOption ? _releaseFeed : (_releaseFeedFromList ?? "");
+
+    private async Task UploadAndStartRelease()
+    {
+        var pat = GetReleaseEffectivePat();
+        var pkg = _selectedReleasePackage;
+        if (string.IsNullOrEmpty(pat) || _releaseDefinitionDetail == null || string.IsNullOrWhiteSpace(_releaseSelectedAlias) ||
+            string.IsNullOrWhiteSpace(GetReleaseFeedEffective()) || string.IsNullOrWhiteSpace(_releasePackageName) || string.IsNullOrWhiteSpace(_releaseVersion) ||
+            pkg == null || !File.Exists(pkg.StoredFilePath))
+        {
+            _releaseError = "Missing PAT, pipeline artifact, feed, package name, version, or package file.";
+            return;
+        }
+        _releaseUploading = true;
+        _releaseError = "";
+        StateHasChanged();
+        try
+        {
+            var feedName = GetReleaseFeedEffective().Trim();
+            var feedsExist = _releaseFeedNames.Contains(feedName, StringComparer.OrdinalIgnoreCase);
+            if (!feedsExist)
+            {
+                var createResult = await DialogService.ShowMessageBox(
+                    "Feed not found",
+                    $"Feed '{feedName}' does not exist in this project. Create it now?",
+                    yesText: "Create", cancelText: "Cancel");
+                if (createResult != true)
+                {
+                    _releaseError = "Feed not found. Create it in Azure DevOps Artifacts or choose another feed.";
+                    return;
+                }
+                var created = await ReleaseService.CreateFeedAsync(_releaseOrg.Trim(), _releaseProject.Trim(), feedName, pat);
+                if (!created)
+                {
+                    _releaseError = "Could not create feed. Check PAT has Packaging (Read, write) and try again.";
+                    return;
+                }
+                Snackbar.Add($"Feed '{feedName}' created.", Severity.Info);
+            }
+
+            var (uploadOk, version, uploadErr) = await ReleaseService.UploadUniversalPackageAsync(
+                _releaseOrg.Trim(), _releaseProject.Trim(), feedName, _releasePackageName.Trim(), _releaseVersion.Trim(),
+                pkg.StoredFilePath, pat);
+            if (!uploadOk)
+            {
+                _releaseError = uploadErr ?? "Upload failed.";
+                return;
+            }
+            var result = await ReleaseService.CreateReleaseAsync(
+                _releaseOrg.Trim(), _releaseProject.Trim(), _releaseDefinitionDetail.Id,
+                $"DeployPortal: {pkg.Name} v{version}",
+                new List<(string, string)> { (_releaseSelectedAlias, version!) },
+                pat);
+            if (result.IsSuccess && result.ReleaseUrl != null)
+            {
+                SettingsSvc.SaveReleasePipelineFeedName(feedName);
+                
+                // Record in deployment history
+                await using var ctx = await DbFactory.CreateDbContextAsync();
+                var releasePipelineEnv = await ctx.Environments.FirstOrDefaultAsync(e => e.Name == "Release Pipeline");
+                var deployment = new Deployment
+                {
+                    PackageId = pkg.Id,
+                    EnvironmentId = releasePipelineEnv?.Id ?? 1,
+                    Status = DeploymentStatus.Success,
+                    QueuedAt = DateTime.UtcNow,
+                    StartedAt = DateTime.UtcNow,
+                    CompletedAt = DateTime.UtcNow,
+                    ReleaseUrl = result.ReleaseUrl,
+                    DevOpsTaskUrl = pkg.DevOpsTaskUrl
+                };
+                ctx.Deployments.Add(deployment);
+                await ctx.SaveChangesAsync();
+
+                Snackbar.Add($"Release created successfully!", Severity.Success);
+                await DialogService.ShowMessageBox(
+                    "Release Started",
+                    $"Release has been created and started in Azure DevOps.\n\nRelease URL:\n{result.ReleaseUrl}",
+                    options: new MudBlazor.DialogOptions { MaxWidth = MudBlazor.MaxWidth.Medium });
+                CloseReleaseDialog();
+            }
+            else
+                _releaseError = result.ErrorMessage ?? "Failed to create release.";
+        }
+        catch (Exception ex)
+        {
+            _releaseError = ExceptionHelper.GetDisplayMessage(ex);
+        }
+        finally
+        {
+            _releaseUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseReleaseDialog()
+    {
+        _releaseDialogOpen = false;
     }
 
     // ===== Helpers =====

@@ -4,7 +4,7 @@ namespace DeployPortal.Services;
 
 /// <summary>
 /// Manages application settings that can be changed at runtime via the UI.
-/// Settings are persisted to a JSON file next to appsettings.json.
+/// Settings are persisted to a JSON file in LocalApplicationData so they survive rebuilds and clean.
 /// On read, user settings override appsettings.json values.
 /// </summary>
 public class SettingsService
@@ -20,7 +20,38 @@ public class SettingsService
         _config = config;
         _env = env;
         _logger = logger;
-        _userSettingsPath = Path.Combine(AppContext.BaseDirectory, "usersettings.json");
+        var configuredPath = _config["DeployPortal:UserSettingsPath"]?.Trim();
+        if (!string.IsNullOrEmpty(configuredPath))
+        {
+            _userSettingsPath = Path.GetFullPath(configuredPath);
+        }
+        else
+        {
+            var appDataDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var appDir = Path.Combine(appDataDir, "DeployPortal");
+            _userSettingsPath = Path.Combine(appDir, "usersettings.json");
+        }
+        MigrateFromLegacyPathIfNeeded();
+    }
+
+    /// <summary>One-time migration: copy usersettings.json from bin folder to AppData if it exists there.</summary>
+    private void MigrateFromLegacyPathIfNeeded()
+    {
+        if (File.Exists(_userSettingsPath)) return;
+        var legacyPath = Path.Combine(AppContext.BaseDirectory, "usersettings.json");
+        if (!File.Exists(legacyPath)) return;
+        try
+        {
+            var dir = Path.GetDirectoryName(_userSettingsPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+            File.Copy(legacyPath, _userSettingsPath);
+            _logger.LogInformation("Migrated user settings from {Legacy} to {New}", legacyPath, _userSettingsPath);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not migrate user settings from {Legacy}", legacyPath);
+        }
     }
 
     // ========== Settings Keys ==========
@@ -56,16 +87,34 @@ public class SettingsService
     public string ModelUtilPath => GetSetting("ModelUtilPath", "");
     public string PacCliPath => GetSetting("PacCliPath", "");
     public string PackageStoragePath => GetSetting("PackageStoragePath",
-        Path.Combine(AppContext.BaseDirectory, "Packages"));
+        Path.Combine(@"C:\DeployPortal", "Packages"));
     public string TempWorkingDir => GetSetting("TempWorkingDir",
-        Path.Combine(Path.GetTempPath(), "DeployPortal"));
+        Path.Combine(@"C:\Temp", "DeployPortal"));
     public string DatabasePath => GetSetting("DatabasePath",
-        Path.Combine(AppContext.BaseDirectory, "deploy-portal.db"));
+        Path.Combine(@"C:\DeployPortal", "deploy-portal.db"));
 
     /// <summary>
     /// Optional path to LCS template (folder or .zip). When set, Unified→LCS conversion uses it as skeleton so the result has the full LCS structure (AOSService/Packages exe, DLLs, Scripts, etc.). Leave empty for minimal LCS output.
     /// </summary>
     public string LcsTemplatePath => GetSetting("LcsTemplatePath", "");
+
+    /// <summary>
+    /// When true, deployment runs auth and "pac auth who" to verify connection but does not run "pac package deploy". Prevents accidental deploy.
+    /// </summary>
+    public bool SimulateDeployment => string.Equals(GetSetting("SimulateDeployment", "false"), "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Azure DevOps: organization (e.g. sisn or org name from dev.azure.com).</summary>
+    public string AzureDevOpsOrganization => GetSetting("AzureDevOpsOrganization", "");
+    /// <summary>Azure DevOps: project name or ID.</summary>
+    public string AzureDevOpsProject => GetSetting("AzureDevOpsProject", "");
+    /// <summary>Azure DevOps PAT stored encrypted (Build Read). Empty if not set.</summary>
+    public string AzureDevOpsPatEncrypted => GetSetting("AzureDevOpsPatEncrypted", "");
+
+    /// <summary>Last used feed name for Release Pipeline deploy. Default "Packages".</summary>
+    public string ReleasePipelineFeedName => GetSetting("ReleasePipelineFeedName", "Packages");
+
+    /// <summary>Path where user settings are stored (for display in UI).</summary>
+    public string UserSettingsFilePath => _userSettingsPath;
 
     // ========== Tool Validation ==========
     public record ToolStatus(string Name, string Path, bool Exists, string Message);
@@ -134,6 +183,19 @@ public class SettingsService
                 exists ? "Found" : "File not found at configured path"));
         }
 
+        // Azure CLI (az)
+        var azInPath = FindInPath("az.cmd") ?? FindInPath("az.exe") ?? FindInPath("az");
+        if (azInPath != null)
+        {
+            results.Add(new ToolStatus("Azure CLI", azInPath, true,
+                "Found in system PATH. Required for 'Deploy via Release Pipeline'."));
+        }
+        else
+        {
+            results.Add(new ToolStatus("Azure CLI", "", false,
+                "Not found in PATH. Required for 'Deploy via Release Pipeline' (Universal Package upload)."));
+        }
+
         return results;
     }
 
@@ -179,7 +241,7 @@ public class SettingsService
     public Dictionary<string, string> GetAllSettings()
     {
         var userSettings = LoadUserSettings();
-        var keys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath" };
+        var keys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath", "SimulateDeployment" };
         var result = new Dictionary<string, string>();
 
         foreach (var key in keys)
@@ -197,12 +259,51 @@ public class SettingsService
     {
         lock (_lock)
         {
+            var dir = Path.GetDirectoryName(_userSettingsPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
             var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
             File.WriteAllText(_userSettingsPath, json);
             _logger.LogInformation("User settings saved to {Path}", _userSettingsPath);
+        }
+    }
+
+    /// <summary>
+    /// Saves Azure DevOps settings (PAT encrypted, org, project). Pass null to leave a value unchanged.
+    /// </summary>
+    public void SaveAzureDevOpsSettings(string? patEncrypted, string? organization, string? project)
+    {
+        lock (_lock)
+        {
+            var userSettings = LoadUserSettings();
+            if (patEncrypted != null) userSettings["AzureDevOpsPatEncrypted"] = patEncrypted;
+            if (organization != null) userSettings["AzureDevOpsOrganization"] = organization;
+            if (project != null) userSettings["AzureDevOpsProject"] = project;
+            var dir = Path.GetDirectoryName(_userSettingsPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+            var json = JsonSerializer.Serialize(userSettings, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(_userSettingsPath, json);
+            _logger.LogInformation("Azure DevOps settings updated.");
+        }
+    }
+
+    /// <summary>Saves last used feed name for Release Pipeline deploy (persisted for next time).</summary>
+    public void SaveReleasePipelineFeedName(string feedName)
+    {
+        if (string.IsNullOrWhiteSpace(feedName)) return;
+        lock (_lock)
+        {
+            var userSettings = LoadUserSettings();
+            userSettings["ReleasePipelineFeedName"] = feedName.Trim();
+            var dir = Path.GetDirectoryName(_userSettingsPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+            var json = JsonSerializer.Serialize(userSettings, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(_userSettingsPath, json);
         }
     }
 

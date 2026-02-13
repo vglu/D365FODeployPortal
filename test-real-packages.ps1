@@ -10,8 +10,8 @@
 
 $ErrorActionPreference = "Stop"
 $ModelUtil = "C:\Users\vetal\AppData\Local\Microsoft\Dynamics365\10.0.2428.63\PackagesLocalDirectory\bin\ModelUtil.exe"
-$Pkg1 = "D:\DeployPortal\Packages\20260208_232056_3b16a76e12ce417988a3b03b1298427b_PCM-DeployableRuntime_2026.1.8.3.zip"
-$Pkg2 = "D:\DeployPortal\Packages\20260208_232105_4f04faa4d8384c3cbd3d4cb6364cb0df_ALOPS-DeployableRuntime_2026.1.8.3.zip"
+$Pkg1 = "C:\DeployPortal\Packages\20260208_232056_3b16a76e12ce417988a3b03b1298427b_PCM-DeployableRuntime_2026.1.8.3.zip"
+$Pkg2 = "C:\DeployPortal\Packages\20260208_232105_4f04faa4d8384c3cbd3d4cb6364cb0df_ALOPS-DeployableRuntime_2026.1.8.3.zip"
 $TestDir = "D:\Temp\DeployPortal-Test-$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 
 Write-Host "=" * 70 -ForegroundColor Cyan

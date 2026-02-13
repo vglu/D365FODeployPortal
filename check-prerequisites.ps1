@@ -2,8 +2,8 @@
 .SYNOPSIS
     Pre-flight check: verifies all required components for DeployPortal.
 .DESCRIPTION
-    Checks for .NET SDK/Runtime, PAC CLI, ModelUtil.exe, disk space, and
-    other prerequisites. Offers download links and install commands for
+    Checks for .NET SDK/Runtime, PAC CLI, Azure CLI (az), ModelUtil.exe, disk space,
+    and other prerequisites. Offers download links and install commands for
     any missing components.
 .EXAMPLE
     .\check-prerequisites.ps1
@@ -203,6 +203,33 @@ if ($pacPath) {
 }
 
 # ─────────────────────────────────────────────
+#  3.5 Azure CLI (optional - for Deploy via Release Pipeline)
+# ─────────────────────────────────────────────
+
+Write-Header "Azure CLI (Optional - for Release Pipeline deploy)"
+
+$azPath = Find-InPath "az"
+if ($azPath) {
+    $azVersion = $null
+    try {
+        $azOutput = & az version 2>$null
+        if ($azOutput) {
+            $azJson = $azOutput | Out-String
+            if ($azJson -match '"azure-cli"\s*:\s*"([^"]+)"') { $azVersion = $Matches[1] }
+        }
+    } catch {}
+
+    if ($azVersion) {
+        Write-CheckResult "Azure CLI (az)" "OK" "v$azVersion ($azPath)"
+    } else {
+        Write-CheckResult "Azure CLI (az)" "OK" "Found at $azPath"
+    }
+} else {
+    Write-CheckResult "Azure CLI (az)" "WARN" "Not found in PATH. Required for 'Deploy via Release Pipeline' (Universal Package upload)." `
+        "Install: https://learn.microsoft.com/cli/azure/install-azure-cli  (or: winget install Microsoft.AzureCLI)"
+}
+
+# ─────────────────────────────────────────────
 #  4. ModelUtil.exe (optional)
 # ─────────────────────────────────────────────
 
@@ -355,27 +382,36 @@ if ($Mode -eq "Development") {
 # ─────────────────────────────────────────────
 #  8. Published App (Production mode)
 # ─────────────────────────────────────────────
+# Supports two run locations:
+#   - From repo root: script expects .\publish\DeployPortal.exe
+#   - From publish folder (or when script is next to exe): uses current folder as app root
 
 if ($Mode -eq "Production") {
     Write-Header "Published Application"
 
-    $publishDir = Join-Path $PSScriptRoot "publish"
+    $exeInScriptDir = Join-Path $PSScriptRoot "DeployPortal.exe"
+    if (Test-Path $exeInScriptDir) {
+        $publishDir = $PSScriptRoot
+    } else {
+        $publishDir = Join-Path $PSScriptRoot "publish"
+    }
     $exePath = Join-Path $publishDir "DeployPortal.exe"
 
     if (Test-Path $exePath) {
         $exeSize = [math]::Round((Get-Item $exePath).Length / 1MB, 1)
-        Write-CheckResult "DeployPortal.exe" "OK" "Found (${exeSize} MB)"
+        $location = if ($publishDir -eq $PSScriptRoot) { "current folder" } else { "publish/" }
+        Write-CheckResult "DeployPortal.exe" "OK" "Found (${exeSize} MB) in $location"
 
         $templateDll = Join-Path $publishDir "Resources\UnifiedTemplate\TemplatePackage.dll"
         if (Test-Path $templateDll) {
-            Write-CheckResult "Unified Templates" "OK" "Found in publish/Resources/UnifiedTemplate/"
+            Write-CheckResult "Unified Templates" "OK" "Found in Resources/UnifiedTemplate/"
         } else {
-            Write-CheckResult "Unified Templates" "FAIL" "Missing from publish folder" `
-                "Rebuild with: .\publish.ps1"
+            Write-CheckResult "Unified Templates" "FAIL" "Missing TemplatePackage.dll" `
+                "Rebuild with: .\publish.ps1 or copy from repo"
         }
     } else {
-        Write-CheckResult "DeployPortal.exe" "FAIL" "Not found in publish/ folder" `
-            "Build with: .\publish.ps1"
+        Write-CheckResult "DeployPortal.exe" "FAIL" "Not found" `
+            "Run from repo root (.\check-prerequisites.ps1 -Mode Production) or from the publish folder where DeployPortal.exe is located"
     }
 }
 
@@ -487,6 +523,7 @@ Write-Host "  =============================================" -ForegroundColor Cy
 Write-Host ""
 Write-Host "    .NET 9 SDK:         https://dotnet.microsoft.com/download/dotnet/9.0" -ForegroundColor Gray
 Write-Host "    PAC CLI docs:       https://learn.microsoft.com/power-platform/developer/cli/introduction" -ForegroundColor Gray
+Write-Host "    Azure CLI (az):     https://learn.microsoft.com/cli/azure/install-azure-cli" -ForegroundColor Gray
 Write-Host "    PowerShell 7:       https://aka.ms/install-powershell" -ForegroundColor Gray
 Write-Host "    VS Code:            https://code.visualstudio.com/" -ForegroundColor Gray
 Write-Host "    D365FO Dev Tools:   https://learn.microsoft.com/dynamics365/fin-ops-core/dev-itpro/dev-tools/development-tools-overview" -ForegroundColor Gray

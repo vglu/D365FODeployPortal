@@ -51,6 +51,7 @@
     <HeaderContent>
         <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Name)" InitialDirection="SortDirection.Ascending">Name</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Url)">URL</MudTableSortLabel></MudTh>
+        <MudTh Style="width:90px">Auth</MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.TenantId)">Tenant ID</MudTableSortLabel></MudTh>
         <MudTh>App ID</MudTh>
         <MudTh>Secret</MudTh>
@@ -61,6 +62,12 @@
         <MudTd DataLabel="Name">@context.Name</MudTd>
         <MudTd DataLabel="URL">
             <span class="mud-text-secondary" style="font-size:0.85rem">@context.Url</span>
+        </MudTd>
+        <MudTd DataLabel="Auth">
+            @if (context.HasServicePrincipal)
+            { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">SP</MudChip> }
+            else
+            { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary">Interactive</MudChip> }
         </MudTd>
         <MudTd DataLabel="Tenant">@TruncateGuid(context.TenantId)</MudTd>
         <MudTd DataLabel="AppId">@TruncateGuid(context.ApplicationId)</MudTd>
@@ -84,14 +91,27 @@
         <MudText Typo="Typo.h6">@(_editingId.HasValue ? "Edit" : "Add") Environment</MudText>
     </TitleContent>
     <DialogContent>
+        <MudSwitch @bind-Value="_formUseInteractive" Label="Extended: Interactive sign-in (no Service Principal)" Color="Color.Secondary" Class="mb-2" />
+        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3" Style="display:block">
+            When on: only Name and URL required. At deploy time you open a link from the log and enter a code to sign in.
+        </MudText>
         <MudTextField @bind-Value="_formName" Label="Name" Required="true" Class="mb-3" />
         <MudTextField @bind-Value="_formUrl" Label="URL (e.g. myenv.crm.dynamics.com)" Required="true" Class="mb-3" />
-        <MudTextField @bind-Value="_formTenantId" Label="Tenant ID" Required="true" Class="mb-3" />
-        <MudTextField @bind-Value="_formApplicationId" Label="Application (Client) ID" Required="true" Class="mb-3" />
-        <MudTextField @bind-Value="_formClientSecret" Label="Client Secret" Required="@(!_editingId.HasValue)"
-                      InputType="InputType.Password"
-                      HelperText="@(_editingId.HasValue ? "Leave empty to keep current" : "")"
-                      Class="mb-3" />
+        @if (!_formUseInteractive)
+        {
+            <MudTextField @bind-Value="_formTenantId" Label="Tenant ID" Required="true" Class="mb-3" />
+            <MudTextField @bind-Value="_formApplicationId" Label="Application (Client) ID" Required="true" Class="mb-3" />
+            <MudTextField @bind-Value="_formClientSecret" Label="Client Secret" Required="@(!_editingId.HasValue)"
+                          InputType="InputType.Password"
+                          HelperText="@(_editingId.HasValue ? "Leave empty to keep current" : "")"
+                          Class="mb-3" />
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                At deploy time you will see a link in the log. Open it in your browser and enter the code to sign in. Works locally and in Docker.
+            </MudAlert>
+        }
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@CloseDialog">Cancel</MudButton>
@@ -461,6 +481,7 @@ pac auth who</MudPaper>
     // Add/Edit form
     private bool _dialogVisible;
     private int? _editingId;
+    private bool _formUseInteractive;
     private string _formName = "";
     private string _formUrl = "";
     private string _formTenantId = "";
@@ -509,6 +530,7 @@ pac auth who</MudPaper>
     private void OpenAddDialog()
     {
         _editingId = null;
+        _formUseInteractive = false;
         _formName = _formUrl = _formTenantId = _formApplicationId = _formClientSecret = "";
         _dialogVisible = true;
     }
@@ -516,6 +538,7 @@ pac auth who</MudPaper>
     private void OpenEditDialog(Models.Environment env)
     {
         _editingId = env.Id;
+        _formUseInteractive = !env.HasServicePrincipal;
         _formName = env.Name;
         _formUrl = env.Url;
         _formTenantId = env.TenantId;
@@ -533,28 +556,38 @@ pac auth who</MudPaper>
             Snackbar.Add("Name and URL are required.", Severity.Warning);
             return;
         }
+        var useSp = !_formUseInteractive;
+        if (useSp && string.IsNullOrWhiteSpace(_formApplicationId))
+        {
+            Snackbar.Add("Application ID is required when not using interactive sign-in.", Severity.Warning);
+            return;
+        }
+        if (useSp && !_editingId.HasValue && string.IsNullOrWhiteSpace(_formClientSecret))
+        {
+            Snackbar.Add("Client Secret is required when not using interactive sign-in.", Severity.Warning);
+            return;
+        }
         try
         {
+            var tenantId = useSp ? _formTenantId : "";
+            var applicationId = useSp ? _formApplicationId : "";
+            var clientSecret = useSp ? _formClientSecret : "";
+
             if (_editingId.HasValue)
             {
-                await EnvService.UpdateAsync(_editingId.Value, _formName, _formUrl, _formTenantId, _formApplicationId,
-                    string.IsNullOrEmpty(_formClientSecret) ? null : _formClientSecret);
+                await EnvService.UpdateAsync(_editingId.Value, _formName, _formUrl, tenantId, applicationId,
+                    string.IsNullOrEmpty(clientSecret) ? null : clientSecret);
                 Snackbar.Add("Environment updated.", Severity.Success);
             }
             else
             {
-                if (string.IsNullOrWhiteSpace(_formClientSecret))
-                {
-                    Snackbar.Add("Client Secret is required.", Severity.Warning);
-                    return;
-                }
-                await EnvService.CreateAsync(_formName, _formUrl, _formTenantId, _formApplicationId, _formClientSecret);
+                await EnvService.CreateAsync(_formName, _formUrl, tenantId, applicationId, clientSecret);
                 Snackbar.Add("Environment added.", Severity.Success);
             }
             _dialogVisible = false;
             await LoadData();
         }
-        catch (Exception ex) { Snackbar.Add($"Error: {ex.Message}", Severity.Error); }
+        catch (Exception ex) { Snackbar.Add($"Error: {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error); }
     }
 
     // ===== Export / Import backup =====
@@ -567,7 +600,7 @@ pac auth who</MudPaper>
             await JS.InvokeVoidAsync("open", url, "_blank");
             Snackbar.Add($"Export started ({count} environment(s)).", Severity.Success);
         }
-        catch (Exception ex) { Snackbar.Add($"Export failed: {ex.Message}", Severity.Error); }
+        catch (Exception ex) { Snackbar.Add($"Export failed: {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error); }
     }
 
     private async Task OnImportBackupFileSelected(IReadOnlyList<IBrowserFile> files)
@@ -586,7 +619,7 @@ pac auth who</MudPaper>
             _importBackupCount = _importBackupData?.Count ?? 0;
             if (_importBackupCount == 0) _importBackupError = "No valid environments in file.";
         }
-        catch (Exception ex) { _importBackupError = ex.Message; }
+        catch (Exception ex) { _importBackupError = ExceptionHelper.GetDisplayMessage(ex); }
         StateHasChanged();
     }
 
@@ -602,7 +635,7 @@ pac auth who</MudPaper>
             _importBackupCount = 0;
             await LoadData();
         }
-        catch (Exception ex) { _importBackupError = ex.Message; }
+        catch (Exception ex) { _importBackupError = ExceptionHelper.GetDisplayMessage(ex); }
     }
 
     // ===== Import =====
@@ -634,7 +667,7 @@ pac auth who</MudPaper>
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to read file: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Failed to read file: {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error);
         }
     }
 
@@ -716,7 +749,7 @@ pac auth who</MudPaper>
                 }
                 catch (Exception ex)
                 {
-                    Snackbar.Add($"Failed to create '{url}': {ex.Message}", Severity.Error);
+                    Snackbar.Add($"Failed to create '{url}': {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error);
                     errors++;
                 }
             }

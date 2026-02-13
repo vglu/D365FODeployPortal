@@ -3,6 +3,8 @@ using System.Threading.Channels;
 using DeployPortal.Data;
 using DeployPortal.Hubs;
 using DeployPortal.Models;
+using DeployPortal.Services.Deployment;
+using DeployPortal.Services.Deployment.Isolation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,7 +55,8 @@ public class DeploymentOrchestrator : BackgroundService
         using var scope = _services.CreateScope();
         var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
         var convertService = scope.ServiceProvider.GetRequiredService<IConvertService>();
-        var deployService = scope.ServiceProvider.GetRequiredService<DeployService>();
+        var deployService = scope.ServiceProvider.GetRequiredService<IDeployService>();
+        var directoryManager = scope.ServiceProvider.GetRequiredService<IIsolatedDirectoryManager>();
         var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<DeployLogHub>>();
         var settingsService = scope.ServiceProvider.GetRequiredService<SettingsService>();
 
@@ -134,10 +137,15 @@ public class DeploymentOrchestrator : BackgroundService
             await db.SaveChangesAsync(ct);
             Log($"Starting deployment to {deployment.Environment.Name}");
 
+            // Create isolated PAC auth directory for this deployment using IsolatedDirectoryManager
+            // This ensures parallel deployments don't interfere with each other
+            var isolatedAuthDir = directoryManager.CreateIsolatedDirectory(deploymentId);
+            
             await deployService.DeployPackageAsync(
                 deployment.Environment,
                 deployDir,
                 logFilePath,
+                isolatedAuthDir,
                 msg => Log(msg));
 
             // Success
