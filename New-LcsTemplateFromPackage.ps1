@@ -23,7 +23,7 @@
   # Creates ...\AX_AIO_Main_Production_2026.2.4.4 (1)_NoLicenses.zip
 
 .EXAMPLE
-  .\New-LcsTemplateFromPackage.ps1 -SourceZip "D:\Packages\MyProduction.zip" -OutputZip "D:\DeployPortal\LcsTemplate.zip" -RemovePackagePayload
+  .\New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip" -OutputZip "C:\DeployPortal\LcsTemplate.zip" -RemovePackagePayload
 #>
 param(
     [Parameter(Mandatory = $true)]

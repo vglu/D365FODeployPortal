@@ -23,7 +23,7 @@
 </MudAlert>
 
 <MudExpansionPanels Class="mb-4" Elevation="1">
-    <MudExpansionPanel Text="How to use: CLI, Swagger, curl, pipeline" Icon="@Icons.Material.Filled.Help" IconColor="Color.Primary" IsInitiallyExpanded="true">
+    <MudExpansionPanel Text="How to use: CLI, Swagger, curl, pipeline" Icon="@Icons.Material.Filled.Help" iconcolor="Color.Primary" initiallyexpanded="true">
         <MudStack Spacing="3">
             <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Container CLI (convert without web UI)</MudText>
             <MudText Typo="Typo.body2">Run the container with <code>convert</code> and a mounted folder. Input and output paths are given inside the container.</MudText>
@@ -106,7 +106,7 @@
 {
     <MudText Typo="Typo.h5" Class="mt-6 mb-3">Recent Deployments</MudText>
     <MudTable Items="@_recentDeployments" Dense="true" Hover="true" Elevation="2"
-              OnRowClick="@((TableRowClickEventArgs<Deployment> args) => Nav.NavigateTo($"/deployments/{args.Item.Id}"))">
+              OnRowClick="@((TableRowClickEventArgs<Deployment> args) => { if (args?.Item != null) Nav.NavigateTo($"/deployments/{args.Item.Id}"); })">
         <HeaderContent>
             <MudTh>Package</MudTh>
             <MudTh>Environment</MudTh>
@@ -155,8 +155,9 @@
         _envCount = envs.Count;
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        _deployCount = await db.Deployments.CountAsync();
+        _deployCount = await db.Deployments.Where(d => !d.IsArchived).CountAsync();
         _recentDeployments = await db.Deployments
+            .Where(d => !d.IsArchived)
             .Include(d => d.Package)
             .Include(d => d.Environment)
             .OrderByDescending(d => d.QueuedAt)

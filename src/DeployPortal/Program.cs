@@ -6,6 +6,11 @@ using DeployPortal.Hubs;
 using DeployPortal.Models.Api;
 using DeployPortal.PackageOps;
 using DeployPortal.Services;
+using DeployPortal.Services.Deployment;
+using DeployPortal.Services.Deployment.Isolation;
+using DeployPortal.Services.Deployment.PacCli;
+using DeployPortal.Services.Deployment.Validation;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -93,7 +98,7 @@ try
     // so they survive container restarts and app redeployments
     var dataProtectionKeysDir = builder.Configuration["DeployPortal:DataProtectionKeysPath"];
     if (string.IsNullOrWhiteSpace(dataProtectionKeysDir))
-        dataProtectionKeysDir = Path.Combine(AppContext.BaseDirectory, "keys");
+        dataProtectionKeysDir = Path.Combine(@"C:\DeployPortal", "keys");
     Directory.CreateDirectory(dataProtectionKeysDir);
     builder.Services.AddDataProtection()
         .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysDir));
@@ -109,7 +114,30 @@ try
     builder.Services.AddScoped<ConvertService>();
     builder.Services.AddScoped<BuiltInConvertService>();
     builder.Services.AddScoped<IConvertService, CompositeConvertService>();
-    builder.Services.AddScoped<DeployService>();
+    
+    // Deployment services (refactored to follow SOLID principles)
+    builder.Services.AddScoped<IPacCliExecutor>(sp =>
+    {
+        var settings = sp.GetRequiredService<SettingsService>();
+        var logger = sp.GetRequiredService<ILogger<PacCliExecutor>>();
+        var pacCliPath = settings.GetEffectivePacPath();
+        return new PacCliExecutor(pacCliPath, logger);
+    });
+    builder.Services.AddScoped<IPacAuthService, PacAuthService>();
+    builder.Services.AddScoped<IPacDeploymentService, PacDeploymentService>();
+    builder.Services.AddScoped<IIsolatedDirectoryManager, IsolatedDirectoryManager>();
+    
+    // Validators (order matters: Pre-deploy validators first, then post-deploy)
+    builder.Services.AddScoped<IDeploymentValidator, PreDeployAuthValidator>();
+    builder.Services.AddScoped<IDeploymentValidator, PostDeployLogValidator>();
+    
+    // Main deploy service (orchestrator)
+    builder.Services.AddScoped<IDeployService, DeployPortal.Services.Deployment.DeployService>();
+    // Backward compatibility: register old DeployService type pointing to new implementation
+    builder.Services.AddScoped<DeployService>(sp => (DeployPortal.Services.Deployment.DeployService)sp.GetRequiredService<IDeployService>());
+    
+    builder.Services.AddScoped<AzureDevOpsBuildService>();
+    builder.Services.AddScoped<AzureDevOpsReleaseService>();
 
     // IPackageOpsService — switches between Local and Azure based on Settings → ProcessingMode
     builder.Services.AddScoped<IPackageOpsService>(sp =>
@@ -135,6 +163,13 @@ try
 
     // SignalR
     builder.Services.AddSignalR();
+
+    // HttpClient for Blazor components (e.g. Environments)
+    builder.Services.AddScoped(sp =>
+    {
+        var nav = sp.GetRequiredService<NavigationManager>();
+        return new HttpClient { BaseAddress = new Uri(nav.BaseUri) };
+    });
 
     // MudBlazor
     builder.Services.AddMudServices();
@@ -182,38 +217,50 @@ try
         var db = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext();
         db.Database.EnsureCreated();
 
-        // Apply schema migrations for new columns
-        try
+        // Apply schema migrations for new columns (only if missing to avoid ERR in logs).
+        // tbl/col/typ are only ever our constants (Packages, Deployments, column names) — safe.
+        long ColExists(string tbl, string col)
         {
-            db.Database.ExecuteSqlRaw(
-                "ALTER TABLE Packages ADD COLUMN MergeSourceNames TEXT NULL");
-            Log.Information("Added MergeSourceNames column to Packages table");
+            var conn = db.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                conn.Open();
+            using var cmd = conn.CreateCommand();
+#pragma warning disable EF1002
+            cmd.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{tbl}') WHERE name='{col}'";
+#pragma warning restore EF1002
+            var result = cmd.ExecuteScalar();
+            return result is long l ? l : Convert.ToInt64(result ?? 0);
         }
-        catch { /* Column already exists */ }
+        void EnsureColumn(string tbl, string col, string typ)
+        {
+            if (ColExists(tbl, col) == 0)
+            {
+#pragma warning disable EF1002
+                db.Database.ExecuteSqlRaw($"ALTER TABLE \"{tbl}\" ADD COLUMN \"{col}\" {typ}");
+#pragma warning restore EF1002
+                Log.Information("Added {Column} column to {Table} table", col, tbl);
+            }
+        }
+        EnsureColumn("Packages", "MergeSourceNames", "TEXT NULL");
+        EnsureColumn("Packages", "DevOpsTaskUrl", "TEXT NULL");
+        EnsureColumn("Deployments", "DevOpsTaskUrl", "TEXT NULL");
+        EnsureColumn("Packages", "LicenseFileNames", "TEXT NULL");
+        EnsureColumn("Deployments", "ReleaseUrl", "TEXT NULL");
+        EnsureColumn("Deployments", "IsArchived", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("Deployments", "ArchivedAt", "TEXT NULL");
 
-        try
+        // Ensure placeholder environment for Release Pipeline deployments
+        if (!db.Environments.Any(e => e.Name == "Release Pipeline"))
         {
-            db.Database.ExecuteSqlRaw(
-                "ALTER TABLE Packages ADD COLUMN DevOpsTaskUrl TEXT NULL");
-            Log.Information("Added DevOpsTaskUrl column to Packages table");
+            db.Environments.Add(new DeployPortal.Models.Environment
+            {
+                Name = "Release Pipeline",
+                Url = "https://dev.azure.com"
+                // HasServicePrincipal is computed property, no need to set
+            });
+            db.SaveChanges();
+            Log.Information("Created placeholder environment 'Release Pipeline'");
         }
-        catch { /* Column already exists */ }
-
-        try
-        {
-            db.Database.ExecuteSqlRaw(
-                "ALTER TABLE Deployments ADD COLUMN DevOpsTaskUrl TEXT NULL");
-            Log.Information("Added DevOpsTaskUrl column to Deployments table");
-        }
-        catch { /* Column already exists */ }
-
-        try
-        {
-            db.Database.ExecuteSqlRaw(
-                "ALTER TABLE Packages ADD COLUMN LicenseFileNames TEXT NULL");
-            Log.Information("Added LicenseFileNames column to Packages table");
-        }
-        catch { /* Column already exists */ }
     }
 
     if (!app.Environment.IsDevelopment())
@@ -253,6 +300,33 @@ try
     .WithOpenApi()
     .Produces<PackageDto>(200).Produces(404);
 
+    // Release pipeline params (org, project, feed, latest package path/name) for scripts
+    api.MapGet("/release-params", async (SettingsService settings, IDbContextFactory<AppDbContext> dbFactory) =>
+    {
+        var org = settings.AzureDevOpsOrganization ?? "";
+        var project = settings.AzureDevOpsProject ?? "";
+        var feed = string.IsNullOrWhiteSpace(settings.ReleasePipelineFeedName) ? "PPackages" : settings.ReleasePipelineFeedName;
+        string? packageName = null;
+        string? packagePath = null;
+        await using (var db = await dbFactory.CreateDbContextAsync())
+        {
+            var latest = await db.Packages
+                .AsNoTracking()
+                .OrderByDescending(p => p.UploadedAt)
+                .Select(p => new { p.Name, p.StoredFilePath })
+                .FirstOrDefaultAsync();
+            if (latest != null && File.Exists(latest.StoredFilePath))
+            {
+                packageName = latest.Name;
+                packagePath = latest.StoredFilePath;
+            }
+        }
+        var version = "1.0." + DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        return Results.Ok(new { org, project, feed, packageName, packagePath, version });
+    })
+    .WithName("GetReleaseParams")
+    .WithOpenApi();
+
     api.MapPost("/packages/upload", async (HttpContext ctx, PackageService pkg) =>
     {
         if (!ctx.Request.HasFormContentType || ctx.Request.Form.Files.Count == 0)
@@ -273,6 +347,53 @@ try
     .WithOpenApi()
     .Accepts<IFormFile>("multipart/form-data")
     .Produces<PackageDto>(201).Produces(400);
+
+    // Azure DevOps build artifacts: list and add package from build
+    api.MapGet("/azure-devops/artifacts", async (
+        string organization,
+        string project,
+        int buildId,
+        HttpRequest req,
+        AzureDevOpsBuildService buildSvc) =>
+    {
+        var pat = req.Headers["X-AzureDevOps-PAT"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(pat))
+            return Results.Json(new { error = "Header X-AzureDevOps-PAT is required." }, statusCode: 400);
+        try
+        {
+            var list = await buildSvc.ListArtifactsAsync(organization, project, buildId, pat.Trim());
+            return Results.Ok(list.Select(a => new { name = a.Name, downloadUrl = a.DownloadUrl }));
+        }
+        catch (Exception ex)
+        {
+            return Results.Json(new { error = ExceptionHelper.GetDisplayMessage(ex) }, statusCode: 502);
+        }
+    })
+    .WithName("ListBuildArtifacts")
+    .WithOpenApi();
+
+    api.MapPost("/packages/from-build", async (FromBuildRequestDto body, HttpRequest req, PackageService pkg, AzureDevOpsBuildService buildSvc) =>
+    {
+        var pat = req.Headers["X-AzureDevOps-PAT"].FirstOrDefault() ?? body.Pat;
+        if (string.IsNullOrWhiteSpace(pat))
+            return Results.Json(new { error = "PAT required: header X-AzureDevOps-PAT or body.Pat" }, statusCode: 400);
+        if (string.IsNullOrWhiteSpace(body.Organization) || string.IsNullOrWhiteSpace(body.Project) || string.IsNullOrWhiteSpace(body.ArtifactName))
+            return Results.BadRequest("Organization, Project, and ArtifactName are required.");
+        try
+        {
+            await using var stream = await buildSvc.DownloadArtifactAsync(body.Organization, body.Project, body.BuildId, body.ArtifactName, pat.Trim());
+            var fileName = body.ArtifactName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ? body.ArtifactName : body.ArtifactName + ".zip";
+            var package = await pkg.UploadAsync(fileName, stream, devOpsTaskUrl: $"https://dev.azure.com/{Uri.EscapeDataString(body.Organization)}/{Uri.EscapeDataString(body.Project)}/_build/results?buildId={body.BuildId}");
+            return Results.Created($"/api/packages/{package.Id}", PackageDto.From(package));
+        }
+        catch (Exception ex)
+        {
+            return Results.Json(new { error = ExceptionHelper.GetDisplayMessage(ex) }, statusCode: 502);
+        }
+    })
+    .WithName("AddPackageFromBuild")
+    .WithOpenApi()
+    .Produces<PackageDto>(201).Produces(400).Produces(502);
 
     api.MapPost("/packages/{id:int}/convert/unified", async (int id, PackageService pkg) =>
     {
@@ -400,7 +521,7 @@ try
     .Accepts<IFormFile>("multipart/form-data")
     .Produces(200).Produces(400).Produces(404);
 
-    // Start a deployment (returns deployment id / batch number).
+    // Start a deployment (returns deployment id / batch number). API only accepts environments with Service Principal.
     api.MapPost("/deployments", async (DeployRequestDto body, DeploymentOrchestrator orchestrator, IDbContextFactory<AppDbContext> dbFactory) =>
     {
         if (body.PackageId <= 0 || body.EnvironmentId <= 0)
@@ -409,21 +530,30 @@ try
         var packageExists = await db.Packages.AnyAsync(p => p.Id == body.PackageId);
         if (!packageExists)
             return Results.NotFound("Package not found.");
-        var envExists = await db.Environments.AnyAsync(e => e.Id == body.EnvironmentId);
-        if (!envExists)
+        var env = await db.Environments.FindAsync(body.EnvironmentId);
+        if (env == null)
             return Results.NotFound("Environment not found.");
-        var d = new DeployPortal.Models.Deployment
+        if (!env.HasServicePrincipal)
+            return Results.BadRequest("Deployments to environments with interactive sign-in can only be started from the UI. Use an environment with Service Principal for API calls.");
+        try
         {
-            PackageId = body.PackageId,
-            EnvironmentId = body.EnvironmentId,
-            Status = DeployPortal.Models.DeploymentStatus.Queued,
-            QueuedAt = DateTime.UtcNow,
-            DevOpsTaskUrl = string.IsNullOrWhiteSpace(body.DevOpsTaskUrl) ? null : body.DevOpsTaskUrl.Trim()
-        };
-        db.Deployments.Add(d);
-        await db.SaveChangesAsync();
-        await orchestrator.EnqueueAsync(d.Id);
-        return Results.Created($"/api/deployments/{d.Id}", new { deploymentId = d.Id, status = "Queued" });
+            var d = new DeployPortal.Models.Deployment
+            {
+                PackageId = body.PackageId,
+                EnvironmentId = body.EnvironmentId,
+                Status = DeployPortal.Models.DeploymentStatus.Queued,
+                QueuedAt = DateTime.UtcNow,
+                DevOpsTaskUrl = string.IsNullOrWhiteSpace(body.DevOpsTaskUrl) ? null : body.DevOpsTaskUrl.Trim()
+            };
+            db.Deployments.Add(d);
+            await db.SaveChangesAsync();
+            await orchestrator.EnqueueAsync(d.Id);
+            return Results.Created($"/api/deployments/{d.Id}", new { deploymentId = d.Id, status = "Queued" });
+        }
+        catch (Exception ex)
+        {
+            return Results.Json(new { error = ExceptionHelper.GetDisplayMessage(ex) }, statusCode: 500);
+        }
     })
     .WithName("StartDeployment")
     .WithOpenApi()

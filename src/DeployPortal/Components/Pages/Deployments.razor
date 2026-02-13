@@ -1,90 +1,207 @@
 @page "/deployments"
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <PageTitle>Deployment History</PageTitle>
 
 <MudText Typo="Typo.h4" Class="mb-4">Deployment History</MudText>
 
-<MudStack Row="true" Class="mb-4" Spacing="3">
-    <MudSelect T="int?" @bind-Value="_filterPackageId" Label="Filter by Package" Variant="Variant.Outlined"
-               Clearable="true" Style="max-width:300px;">
-        @foreach (var pkg in _allPackages)
-        {
-            <MudSelectItem T="int?" Value="@((int?)pkg.Id)">@pkg.Name</MudSelectItem>
-        }
-    </MudSelect>
-    <MudSelect T="int?" @bind-Value="_filterEnvId" Label="Filter by Environment" Variant="Variant.Outlined"
-               Clearable="true" Style="max-width:300px;">
-        @foreach (var env in _allEnvironments)
-        {
-            <MudSelectItem T="int?" Value="@((int?)env.Id)">@env.Name</MudSelectItem>
-        }
-    </MudSelect>
-    <MudButton Variant="Variant.Outlined" OnClick="@LoadData" StartIcon="@Icons.Material.Filled.Search">
-        Filter
-    </MudButton>
-</MudStack>
+<MudTabs Elevation="2" Rounded="true" Color="Color.Primary" @bind-ActivePanelIndex="_activeTabIndex" Class="mb-4">
+    <MudTabPanel Text="Active Deployments" Icon="@Icons.Material.Filled.History">
+        <MudStack Row="true" Class="mb-4 mt-4" Spacing="3">
+            <MudSelect T="int?" @bind-Value="_filterPackageId" Label="Filter by Package" Variant="Variant.Outlined"
+                       Clearable="true" Style="max-width:300px;">
+                @foreach (var pkg in _allPackages)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)pkg.Id)">@pkg.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="_filterEnvId" Label="Filter by Environment" Variant="Variant.Outlined"
+                       Clearable="true" Style="max-width:300px;">
+                @foreach (var env in _allEnvironments)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)env.Id)">@env.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" OnClick="@LoadActiveData" StartIcon="@Icons.Material.Filled.Search">
+                Filter
+            </MudButton>
+        </MudStack>
 
-<MudTable Items="@_deployments" Dense="true" Hover="true" Elevation="2" Loading="@_loading"
-          OnRowClick="@((TableRowClickEventArgs<Deployment> args) => Nav.NavigateTo($"/deployments/{args.Item.Id}"))">
-    <HeaderContent>
-        <MudTh>ID</MudTh>
-        <MudTh>Package</MudTh>
-        <MudTh>Environment</MudTh>
-        <MudTh>Status</MudTh>
-        <MudTh>Queued</MudTh>
-        <MudTh>Started</MudTh>
-        <MudTh>Completed</MudTh>
-        <MudTh>Duration</MudTh>
-        <MudTh Style="width:44px">
-            <MudTooltip Text="DevOps Task"><MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" /></MudTooltip>
-        </MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd>@context.Id</MudTd>
-        <MudTd>@context.Package.Name</MudTd>
-        <MudTd>@context.Environment.Name</MudTd>
-        <MudTd>
-            <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
-                @context.Status
-            </MudChip>
-        </MudTd>
-        <MudTd>@context.QueuedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudTd>
-        <MudTd>@(context.StartedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
-        <MudTd>@(context.CompletedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
-        <MudTd>@GetDuration(context)</MudTd>
-        <MudTd Style="text-align:center">
-            @if (!string.IsNullOrEmpty(context.DevOpsTaskUrl))
-            {
-                <MudTooltip Text="@context.DevOpsTaskUrl">
-                    <span @onclick:stopPropagation="true">
-                        <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Info"
-                                       Href="@context.DevOpsTaskUrl" Target="_blank" />
-                    </span>
-                </MudTooltip>
-            }
-        </MudTd>
-    </RowTemplate>
-</MudTable>
+        <MudTable Items="@_deployments" Dense="true" Hover="true" Elevation="2" Loading="@_loading">
+            <HeaderContent>
+                <MudTh>ID</MudTh>
+                <MudTh>Package</MudTh>
+                <MudTh>Environment</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Queued</MudTh>
+                <MudTh>Started</MudTh>
+                <MudTh>Completed</MudTh>
+                <MudTh>Duration</MudTh>
+                <MudTh Style="width:88px">
+                    <MudTooltip Text="DevOps Links"><MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" /></MudTooltip>
+                </MudTh>
+                <MudTh Style="width:120px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="ID">@context.Id</MudTd>
+                <MudTd DataLabel="Package">@context.Package.Name</MudTd>
+                <MudTd DataLabel="Environment">@context.Environment.Name</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Queued">@context.QueuedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudTd>
+                <MudTd DataLabel="Started">@(context.StartedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
+                <MudTd DataLabel="Completed">@(context.CompletedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
+                <MudTd DataLabel="Duration">@GetDuration(context)</MudTd>
+                <MudTd DataLabel="Links" Style="text-align:center">
+                    @if (!string.IsNullOrEmpty(context.ReleaseUrl))
+                    {
+                        <MudTooltip Text="Azure DevOps Release">
+                            <MudIconButton Icon="@Icons.Material.Filled.Rocket" Size="Size.Small" Color="Color.Primary"
+                                           Href="@context.ReleaseUrl" Target="_blank" />
+                        </MudTooltip>
+                    }
+                    @if (!string.IsNullOrEmpty(context.DevOpsTaskUrl))
+                    {
+                        <MudTooltip Text="@context.DevOpsTaskUrl">
+                            <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Info"
+                                           Href="@context.DevOpsTaskUrl" Target="_blank" />
+                        </MudTooltip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudTooltip Text="View Details">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Default"
+                                       OnClick="@(() => Nav.NavigateTo($"/deployments/{context.Id}"))" />
+                    </MudTooltip>
+                    <MudTooltip Text="Archive">
+                        <MudIconButton Icon="@Icons.Material.Filled.Archive" Size="Size.Small" Color="Color.Warning"
+                                       OnClick="@(() => ArchiveDeployment(context))" />
+                    </MudTooltip>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Archive" Icon="@Icons.Material.Filled.Archive">
+        <MudStack Row="true" Class="mb-4 mt-4" Spacing="3">
+            <MudSelect T="int?" @bind-Value="_filterPackageIdArchive" Label="Filter by Package" Variant="Variant.Outlined"
+                       Clearable="true" Style="max-width:300px;">
+                @foreach (var pkg in _allPackages)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)pkg.Id)">@pkg.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="_filterEnvIdArchive" Label="Filter by Environment" Variant="Variant.Outlined"
+                       Clearable="true" Style="max-width:300px;">
+                @foreach (var env in _allEnvironments)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)env.Id)">@env.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Outlined" OnClick="@LoadArchivedData" StartIcon="@Icons.Material.Filled.Search">
+                Filter
+            </MudButton>
+        </MudStack>
+
+        <MudTable Items="@_archivedDeployments" Dense="true" Hover="true" Elevation="2" Loading="@_loadingArchive">
+            <HeaderContent>
+                <MudTh>ID</MudTh>
+                <MudTh>Package</MudTh>
+                <MudTh>Environment</MudTh>
+                <MudTh>Status</MudTh>
+                <MudTh>Queued</MudTh>
+                <MudTh>Completed</MudTh>
+                <MudTh>Archived At</MudTh>
+                <MudTh Style="width:88px">
+                    <MudTooltip Text="DevOps Links"><MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" /></MudTooltip>
+                </MudTh>
+                <MudTh Style="width:120px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="ID">@context.Id</MudTd>
+                <MudTd DataLabel="Package">@context.Package.Name</MudTd>
+                <MudTd DataLabel="Environment">@context.Environment.Name</MudTd>
+                <MudTd DataLabel="Status">
+                    <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
+                        @context.Status
+                    </MudChip>
+                </MudTd>
+                <MudTd DataLabel="Queued">@context.QueuedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudTd>
+                <MudTd DataLabel="Completed">@(context.CompletedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
+                <MudTd DataLabel="Archived">@(context.ArchivedAt?.ToLocalTime().ToString("MM-dd HH:mm") ?? "-")</MudTd>
+                <MudTd DataLabel="Links" Style="text-align:center">
+                    @if (!string.IsNullOrEmpty(context.ReleaseUrl))
+                    {
+                        <MudTooltip Text="Azure DevOps Release">
+                            <MudIconButton Icon="@Icons.Material.Filled.Rocket" Size="Size.Small" Color="Color.Primary"
+                                           Href="@context.ReleaseUrl" Target="_blank" />
+                        </MudTooltip>
+                    }
+                    @if (!string.IsNullOrEmpty(context.DevOpsTaskUrl))
+                    {
+                        <MudTooltip Text="@context.DevOpsTaskUrl">
+                            <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Info"
+                                           Href="@context.DevOpsTaskUrl" Target="_blank" />
+                        </MudTooltip>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudTooltip Text="View Details">
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Default"
+                                       OnClick="@(() => Nav.NavigateTo($"/deployments/{context.Id}"))" />
+                    </MudTooltip>
+                    <MudTooltip Text="Restore">
+                        <MudIconButton Icon="@Icons.Material.Filled.Unarchive" Size="Size.Small" Color="Color.Success"
+                                       OnClick="@(() => RestoreDeployment(context))" />
+                    </MudTooltip>
+                    <MudTooltip Text="Delete Permanently">
+                        <MudIconButton Icon="@Icons.Material.Filled.DeleteForever" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeleteDeploymentPermanently(context))" />
+                    </MudTooltip>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudTabPanel>
+</MudTabs>
 
 @code {
     private List<Deployment> _deployments = new();
+    private List<Deployment> _archivedDeployments = new();
     private List<Package> _allPackages = new();
     private List<Models.Environment> _allEnvironments = new();
     private bool _loading = true;
+    private bool _loadingArchive = true;
     private int? _filterPackageId;
     private int? _filterEnvId;
+    private int? _filterPackageIdArchive;
+    private int? _filterEnvIdArchive;
+    private int _activeTabIndex = 0;
 
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         _allPackages = await db.Packages.OrderBy(p => p.Name).ToListAsync();
         _allEnvironments = await db.Environments.OrderBy(e => e.Name).ToListAsync();
-        await LoadData();
+        await LoadActiveData();
     }
 
-    private async Task LoadData()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Load archived data when switching to archive tab
+        if (!firstRender && _activeTabIndex == 1 && _loadingArchive)
+        {
+            await LoadArchivedData();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadActiveData()
     {
         _loading = true;
         await using var db = await DbFactory.CreateDbContextAsync();
@@ -92,6 +209,7 @@
         var query = db.Deployments
             .Include(d => d.Package)
             .Include(d => d.Environment)
+            .Where(d => !d.IsArchived) // Only non-archived
             .AsQueryable();
 
         if (_filterPackageId.HasValue)
@@ -105,6 +223,138 @@
             .ToListAsync();
 
         _loading = false;
+    }
+
+    private async Task LoadArchivedData()
+    {
+        _loadingArchive = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var query = db.Deployments
+            .Include(d => d.Package)
+            .Include(d => d.Environment)
+            .Where(d => d.IsArchived) // Only archived
+            .AsQueryable();
+
+        if (_filterPackageIdArchive.HasValue)
+            query = query.Where(d => d.PackageId == _filterPackageIdArchive.Value);
+        if (_filterEnvIdArchive.HasValue)
+            query = query.Where(d => d.EnvironmentId == _filterEnvIdArchive.Value);
+
+        _archivedDeployments = await query
+            .OrderByDescending(d => d.ArchivedAt ?? d.QueuedAt)
+            .Take(100)
+            .ToListAsync();
+
+        _loadingArchive = false;
+    }
+
+    private async Task ArchiveDeployment(Deployment deployment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Archive Deployment",
+            $"Archive deployment #{deployment.Id} to '{deployment.Environment.Name}'?\n\n" +
+            "The deployment will be moved to the Archive tab. You can restore it later or delete it permanently.",
+            yesText: "Archive",
+            cancelText: "Cancel");
+
+        if (result != true) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var dep = await db.Deployments.FindAsync(deployment.Id);
+            if (dep != null)
+            {
+                dep.IsArchived = true;
+                dep.ArchivedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                Snackbar.Add($"Deployment #{deployment.Id} archived successfully.", Severity.Success);
+                await LoadActiveData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to archive deployment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RestoreDeployment(Deployment deployment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Restore Deployment",
+            $"Restore deployment #{deployment.Id} from archive?\n\n" +
+            "The deployment will be moved back to active deployments.",
+            yesText: "Restore",
+            cancelText: "Cancel");
+
+        if (result != true) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var dep = await db.Deployments.FindAsync(deployment.Id);
+            if (dep != null)
+            {
+                dep.IsArchived = false;
+                dep.ArchivedAt = null;
+                await db.SaveChangesAsync();
+                Snackbar.Add($"Deployment #{deployment.Id} restored successfully.", Severity.Success);
+                await LoadArchivedData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to restore deployment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteDeploymentPermanently(Deployment deployment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "⚠️ Delete Permanently",
+            $"PERMANENTLY DELETE deployment #{deployment.Id}?\n\n" +
+            $"Package: {deployment.Package.Name}\n" +
+            $"Environment: {deployment.Environment.Name}\n\n" +
+            "⚠️ THIS ACTION CANNOT BE UNDONE! ⚠️\n\n" +
+            "All deployment logs and history will be permanently deleted.",
+            yesText: "Delete Forever",
+            cancelText: "Cancel");
+
+        if (result != true) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            // Delete deployment logs first
+            var logs = await db.DeploymentLogs.Where(l => l.DeploymentId == deployment.Id).ToListAsync();
+            db.DeploymentLogs.RemoveRange(logs);
+            
+            // Delete deployment
+            var dep = await db.Deployments.FindAsync(deployment.Id);
+            if (dep != null)
+            {
+                // Delete log file if exists
+                if (!string.IsNullOrEmpty(dep.LogFilePath) && File.Exists(dep.LogFilePath))
+                {
+                    try
+                    {
+                        File.Delete(dep.LogFilePath);
+                    }
+                    catch { /* Continue even if file deletion fails */ }
+                }
+                
+                db.Deployments.Remove(dep);
+                await db.SaveChangesAsync();
+                Snackbar.Add($"Deployment #{deployment.Id} deleted permanently.", Severity.Warning);
+                await LoadArchivedData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete deployment: {ex.Message}", Severity.Error);
+        }
     }
 
     private Color GetStatusColor(DeploymentStatus status) => status switch

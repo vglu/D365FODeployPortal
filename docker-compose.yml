@@ -29,6 +29,7 @@ services:
       - DeployPortal__PackageStoragePath=/app/packages
       - DeployPortal__TempWorkingDir=/tmp/DeployPortal
       - DeployPortal__DataProtectionKeysPath=/app/data/keys
+      - DeployPortal__UserSettingsPath=/app/data/usersettings.json
       - DeployPortal__ConverterEngine=BuiltIn
       # Uncomment to change the port:
       # - ASPNETCORE_URLS=http://+:8080

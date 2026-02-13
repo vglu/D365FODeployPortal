@@ -44,12 +44,12 @@ RUN dotnet publish src/DeployPortal/DeployPortal.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
 
-# Install system dependencies + PAC CLI
-# Download the NuGet package directly (it's a ZIP file) — no Mono/nuget CLI needed
+# Install system dependencies + PAC CLI + Azure CLI (az)
+# PAC: required for deployment. Azure CLI: required for "Deploy via Release Pipeline" (Universal Package upload).
 # Pinned to 1.49.4 — last version targeting .NET 9 (2.x requires .NET 10)
 ARG PAC_CLI_VERSION=1.49.4
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl libicu-dev unzip && \
+    apt-get install -y --no-install-recommends curl libicu-dev unzip ca-certificates && \
     curl -sL -o /tmp/pac.nupkg \
       "https://www.nuget.org/api/v2/package/Microsoft.PowerApps.CLI.Core.linux-x64/${PAC_CLI_VERSION}" && \
     mkdir -p /tmp/pac-extract && \
@@ -58,6 +58,11 @@ RUN apt-get update && \
     chmod +x /usr/local/bin/pac && \
     rm -rf /tmp/pac.nupkg /tmp/pac-extract && \
     apt-get purge -y unzip && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# Azure CLI — for "Deploy via Release Pipeline" (az artifacts universal publish)
+RUN apt-get update && \
+    curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \
     rm -rf /var/lib/apt/lists/*
 
 # Create directories for persistent data
@@ -74,6 +79,7 @@ ENV DeployPortal__DatabasePath=/app/data/deploy-portal.db
 ENV DeployPortal__PackageStoragePath=/app/packages
 ENV DeployPortal__TempWorkingDir=/tmp/DeployPortal
 ENV DeployPortal__DataProtectionKeysPath=/app/data/keys
+ENV DeployPortal__UserSettingsPath=/app/data/usersettings.json
 ENV DeployPortal__ConverterEngine=BuiltIn
 # Full LCS template for Unified→LCS (ImportISVLicense.zip from CustomDeployablePackage). Override with DeployPortal__LcsTemplatePath if needed.
 ENV DeployPortal__LcsTemplatePath=/app/Resources/LcsTemplate/ImportISVLicense.zip

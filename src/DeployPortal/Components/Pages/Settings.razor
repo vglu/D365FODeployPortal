@@ -6,6 +6,18 @@
 
 <MudText Typo="Typo.h4" Class="mb-4">Settings</MudText>
 
+@* ===== DEPLOYMENT SAFETY ===== *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Shield" Color="Color.Warning" />
+        <MudText Typo="Typo.h6">Deployment safety</MudText>
+    </MudStack>
+    <MudSwitch @bind-Value="_simulateDeployment" Label="Simulate deployment" Color="Color.Warning" Class="mb-2" />
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        When on: auth and connection check (<code>pac auth who</code>) run as usual, but <strong>package deploy is skipped</strong>. Use this to avoid accidentally deploying to real environments. Connection verification confirms you are correctly connected to the target.
+    </MudText>
+</MudPaper>
+
 @* ===== TOOL STATUS ===== *@
 <MudPaper Class="pa-4 mb-4" Elevation="2">
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
@@ -190,7 +202,7 @@
 </MudPaper>
 
 @* ===== SAVE ===== *@
-<MudStack Row="true" Spacing="2" Class="mb-4">
+<MudStack Row="true" Spacing="2" Class="mb-2">
     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@SaveSettings"
                StartIcon="@Icons.Material.Filled.Save" Disabled="@_saving">
         @(_saving ? "Saving..." : "Save Settings")
@@ -200,6 +212,9 @@
         Reset to Saved
     </MudButton>
 </MudStack>
+<MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-4">
+    Settings are stored in <code>@SettingsSvc.UserSettingsFilePath</code> and persist across app restarts and rebuilds.
+</MudText>
 
 @* ===== DEPLOYMENT INFO ===== *@
 <MudPaper Class="pa-4 mb-4" Elevation="2">
@@ -416,6 +431,7 @@
     private string _tempWorkingDir = "";
     private string _databasePath = "";
     private string _lcsTemplatePath = "";
+    private bool _simulateDeployment;
     private bool _saving;
     private List<SettingsService.ToolStatus>? _toolStatus;
 
@@ -439,6 +455,7 @@
         _tempWorkingDir = settings.GetValueOrDefault("TempWorkingDir", "");
         _databasePath = settings.GetValueOrDefault("DatabasePath", "");
         _lcsTemplatePath = settings.GetValueOrDefault("LcsTemplatePath", "");
+        _simulateDeployment = string.Equals(settings.GetValueOrDefault("SimulateDeployment", "false"), "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RefreshStatus()
@@ -463,7 +480,8 @@
                 ["PackageStoragePath"] = _packageStoragePath.Trim(),
                 ["TempWorkingDir"] = _tempWorkingDir.Trim(),
                 ["DatabasePath"] = _databasePath.Trim(),
-                ["LcsTemplatePath"] = _lcsTemplatePath.Trim()
+                ["LcsTemplatePath"] = _lcsTemplatePath.Trim(),
+                ["SimulateDeployment"] = _simulateDeployment ? "true" : "false"
             };
 
             SettingsSvc.SaveSettings(settings);
@@ -472,7 +490,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to save: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Failed to save: {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error);
         }
         finally
         {

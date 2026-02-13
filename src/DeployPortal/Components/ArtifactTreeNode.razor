@@ -1,0 +1,57 @@
+@* Renders one node in artifact tree; for folders renders children recursively (up to 8 levels). *@
+<MudTreeViewItem T="string" Value="@_nodeKey" CanExpand="@(Node.IsFolder && Node.Children.Count > 0)" Expanded="_isExpanded" ExpandedChanged="@((bool v) => OnExpandedChanged(v))">
+    <Content>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+            @if (Node.IsFolder && Node.Children.Count > 0)
+            {
+                <span @onclick="@((_) => { })" @onclick:stopPropagation="true">
+                    <MudIconButton Icon="@(_isExpanded ? Icons.Material.Filled.ExpandMore : Icons.Material.Filled.ChevronRight)"
+                                  Size="Size.Small" OnClick="@ToggleExpand"
+                                  title="@(_isExpanded ? "Collapse" : "Expand")" />
+                </span>
+            }
+            @if (Node.IsFolder)
+            {
+                <MudIcon Icon="@(_isExpanded ? Icons.Material.Filled.FolderOpen : Icons.Material.Filled.Folder)" Size="Size.Small" Color="Color.Default" />
+                <MudCheckBox T="bool" Value="@SelectedKeys.Contains(_nodeKey)"
+                            ValueChanged="@(v => SelectionChanged.InvokeAsync((_nodeKey, v)))" />
+                <MudText Typo="Typo.body2">@Node.Name <MudChip T="string" Size="Size.Small" Style="font-size:0.7rem">folder → zip</MudChip></MudText>
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" Color="Color.Default" />
+                <MudCheckBox T="bool" Value="@SelectedKeys.Contains(_nodeKey)"
+                            ValueChanged="@(v => SelectionChanged.InvokeAsync((_nodeKey, v)))" />
+                <MudText Typo="Typo.body2">@Node.Name</MudText>
+            }
+        </MudStack>
+    </Content>
+    <ChildContent>
+        @if (Node.IsFolder && Node.Children.Count > 0)
+        {
+            @foreach (var child in Node.Children.OrderBy(c => c.IsFolder ? 0 : 1).ThenBy(c => c.Name))
+            {
+                <ArtifactTreeNode ArtifactName="@ArtifactName" Node="child" SelectedKeys="SelectedKeys"
+                                  SelectionChanged="SelectionChanged" />
+            }
+        }
+    </ChildContent>
+</MudTreeViewItem>
+
+@code {
+    [Parameter] public string ArtifactName { get; set; } = "";
+    [Parameter] public ArtifactNode Node { get; set; } = null!;
+    [Parameter] public HashSet<string> SelectedKeys { get; set; } = null!;
+    [Parameter] public EventCallback<(string key, bool selected)> SelectionChanged { get; set; }
+
+    private string _nodeKey => string.IsNullOrEmpty(Node.RelativePath) ? ArtifactName : $"{ArtifactName}|{Node.RelativePath}{(Node.IsFolder ? "/" : "")}";
+    private bool _isExpanded;
+
+    private void OnExpandedChanged(bool v) => _isExpanded = v;
+
+    private async Task ToggleExpand()
+    {
+        _isExpanded = !_isExpanded;
+        await InvokeAsync(StateHasChanged);
+    }
+}

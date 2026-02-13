@@ -41,6 +41,7 @@ public class AppDbContext : DbContext
 
             entity.HasIndex(d => d.Status);
             entity.HasIndex(d => d.QueuedAt);
+            entity.HasIndex(d => d.IsArchived); // Index for archive filter
         });
 
         modelBuilder.Entity<DeploymentLog>(entity =>

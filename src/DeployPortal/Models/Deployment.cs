@@ -31,5 +31,23 @@ public class Deployment
     [MaxLength(1000)]
     public string? DevOpsTaskUrl { get; set; }
 
+    /// <summary>
+    /// For Release Pipeline deployments: URL to the Azure DevOps release (e.g. https://dev.azure.com/.../SIS%20D365FO%20Products/_release?releaseId=123).
+    /// If set, this deployment was triggered via Release Pipeline, not direct orchestrator.
+    /// </summary>
+    [MaxLength(2000)]
+    public string? ReleaseUrl { get; set; }
+
+    /// <summary>
+    /// Soft delete flag. When true, deployment is archived and not shown in active history.
+    /// Archived deployments can be viewed separately and permanently deleted if needed.
+    /// </summary>
+    public bool IsArchived { get; set; } = false;
+
+    /// <summary>
+    /// When the deployment was archived (soft deleted).
+    /// </summary>
+    public DateTime? ArchivedAt { get; set; }
+
     public ICollection<DeploymentLog> Logs { get; set; } = new List<DeploymentLog>();
 }

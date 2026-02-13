@@ -249,13 +249,54 @@ public class PackageService
         var package = await db.Packages.FindAsync(id);
         if (package == null) return;
 
+        // Check if package is used in any deployments
+        var deploymentsCount = await db.Deployments.CountAsync(d => d.PackageId == id);
+        if (deploymentsCount > 0)
+        {
+            throw new InvalidOperationException(
+                $"Cannot delete package '{package.Name}' because it is used in {deploymentsCount} deployment(s). " +
+                $"Please delete all related deployments first.");
+        }
+
+        // Delete physical file
         if (File.Exists(package.StoredFilePath))
-            File.Delete(package.StoredFilePath);
+        {
+            try
+            {
+                File.Delete(package.StoredFilePath);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete package file: {Path}", package.StoredFilePath);
+                // Continue with DB deletion even if file deletion fails
+            }
+        }
 
         db.Packages.Remove(package);
         await db.SaveChangesAsync();
 
         _logger.LogInformation("Package deleted: {Name}", package.Name);
+    }
+
+    /// <summary>
+    /// Checks if a package is used in any active (non-archived) deployments and returns usage information.
+    /// </summary>
+    public async Task<(int DeploymentsCount, List<string> EnvironmentNames)> GetPackageUsageAsync(int packageId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        
+        var deployments = await db.Deployments
+            .Where(d => d.PackageId == packageId && !d.IsArchived) // Only active deployments
+            .Include(d => d.Environment)
+            .ToListAsync();
+
+        var envNames = deployments
+            .Select(d => d.Environment?.Name ?? "Unknown")
+            .Distinct()
+            .OrderBy(n => n)
+            .ToList();
+
+        return (deployments.Count, envNames);
     }
 
     /// <summary>
