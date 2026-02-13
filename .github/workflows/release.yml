@@ -44,12 +44,7 @@ jobs:
             --output $outDir
           Copy-Item Setup-ServicePrincipal.ps1, Setup-ServicePrincipal-Manual.md, check-prerequisites.ps1 -Destination $outDir -ErrorAction SilentlyContinue
           if (Test-Path publish-README.md) { Copy-Item publish-README.md $outDir\README.md }
-          @'
-@echo off
-echo Starting DeployPortal...
-start http://localhost:5000
-DeployPortal.exe --urls "http://localhost:5000"
-'@ | Out-File (Join-Path $outDir "start.cmd") -Encoding ASCII
+          Set-Content -Path (Join-Path $outDir "start.cmd") -Value "@echo off","echo Starting DeployPortal...","start http://localhost:5000","DeployPortal.exe --urls `"http://localhost:5000`"" -Encoding ASCII
           echo "OUT_DIR=$outDir" >> $env:GITHUB_ENV
 
       - name: Create zip artifact
