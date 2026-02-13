@@ -279,14 +279,14 @@ public class PackageService
     }
 
     /// <summary>
-    /// Checks if a package is used in any deployments and returns usage information.
+    /// Checks if a package is used in any active (non-archived) deployments and returns usage information.
     /// </summary>
     public async Task<(int DeploymentsCount, List<string> EnvironmentNames)> GetPackageUsageAsync(int packageId)
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
         
         var deployments = await db.Deployments
-            .Where(d => d.PackageId == packageId)
+            .Where(d => d.PackageId == packageId && !d.IsArchived) // Only active deployments
             .Include(d => d.Environment)
             .ToListAsync();
 

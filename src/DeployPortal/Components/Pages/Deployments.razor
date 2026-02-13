@@ -172,21 +172,36 @@
 
 @code {
     private List<Deployment> _deployments = new();
+    private List<Deployment> _archivedDeployments = new();
     private List<Package> _allPackages = new();
     private List<Models.Environment> _allEnvironments = new();
     private bool _loading = true;
+    private bool _loadingArchive = true;
     private int? _filterPackageId;
     private int? _filterEnvId;
+    private int? _filterPackageIdArchive;
+    private int? _filterEnvIdArchive;
+    private int _activeTabIndex = 0;
 
     protected override async Task OnInitializedAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
         _allPackages = await db.Packages.OrderBy(p => p.Name).ToListAsync();
         _allEnvironments = await db.Environments.OrderBy(e => e.Name).ToListAsync();
-        await LoadData();
+        await LoadActiveData();
     }
 
-    private async Task LoadData()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Load archived data when switching to archive tab
+        if (!firstRender && _activeTabIndex == 1 && _loadingArchive)
+        {
+            await LoadArchivedData();
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadActiveData()
     {
         _loading = true;
         await using var db = await DbFactory.CreateDbContextAsync();
@@ -194,6 +209,7 @@
         var query = db.Deployments
             .Include(d => d.Package)
             .Include(d => d.Environment)
+            .Where(d => !d.IsArchived) // Only non-archived
             .AsQueryable();
 
         if (_filterPackageId.HasValue)
@@ -207,6 +223,138 @@
             .ToListAsync();
 
         _loading = false;
+    }
+
+    private async Task LoadArchivedData()
+    {
+        _loadingArchive = true;
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        var query = db.Deployments
+            .Include(d => d.Package)
+            .Include(d => d.Environment)
+            .Where(d => d.IsArchived) // Only archived
+            .AsQueryable();
+
+        if (_filterPackageIdArchive.HasValue)
+            query = query.Where(d => d.PackageId == _filterPackageIdArchive.Value);
+        if (_filterEnvIdArchive.HasValue)
+            query = query.Where(d => d.EnvironmentId == _filterEnvIdArchive.Value);
+
+        _archivedDeployments = await query
+            .OrderByDescending(d => d.ArchivedAt ?? d.QueuedAt)
+            .Take(100)
+            .ToListAsync();
+
+        _loadingArchive = false;
+    }
+
+    private async Task ArchiveDeployment(Deployment deployment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Archive Deployment",
+            $"Archive deployment #{deployment.Id} to '{deployment.Environment.Name}'?\n\n" +
+            "The deployment will be moved to the Archive tab. You can restore it later or delete it permanently.",
+            yesText: "Archive",
+            cancelText: "Cancel");
+
+        if (result != true) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var dep = await db.Deployments.FindAsync(deployment.Id);
+            if (dep != null)
+            {
+                dep.IsArchived = true;
+                dep.ArchivedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
+                Snackbar.Add($"Deployment #{deployment.Id} archived successfully.", Severity.Success);
+                await LoadActiveData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to archive deployment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RestoreDeployment(Deployment deployment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Restore Deployment",
+            $"Restore deployment #{deployment.Id} from archive?\n\n" +
+            "The deployment will be moved back to active deployments.",
+            yesText: "Restore",
+            cancelText: "Cancel");
+
+        if (result != true) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var dep = await db.Deployments.FindAsync(deployment.Id);
+            if (dep != null)
+            {
+                dep.IsArchived = false;
+                dep.ArchivedAt = null;
+                await db.SaveChangesAsync();
+                Snackbar.Add($"Deployment #{deployment.Id} restored successfully.", Severity.Success);
+                await LoadArchivedData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to restore deployment: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteDeploymentPermanently(Deployment deployment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "⚠️ Delete Permanently",
+            $"PERMANENTLY DELETE deployment #{deployment.Id}?\n\n" +
+            $"Package: {deployment.Package.Name}\n" +
+            $"Environment: {deployment.Environment.Name}\n\n" +
+            "⚠️ THIS ACTION CANNOT BE UNDONE! ⚠️\n\n" +
+            "All deployment logs and history will be permanently deleted.",
+            yesText: "Delete Forever",
+            cancelText: "Cancel");
+
+        if (result != true) return;
+
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            
+            // Delete deployment logs first
+            var logs = await db.DeploymentLogs.Where(l => l.DeploymentId == deployment.Id).ToListAsync();
+            db.DeploymentLogs.RemoveRange(logs);
+            
+            // Delete deployment
+            var dep = await db.Deployments.FindAsync(deployment.Id);
+            if (dep != null)
+            {
+                // Delete log file if exists
+                if (!string.IsNullOrEmpty(dep.LogFilePath) && File.Exists(dep.LogFilePath))
+                {
+                    try
+                    {
+                        File.Delete(dep.LogFilePath);
+                    }
+                    catch { /* Continue even if file deletion fails */ }
+                }
+                
+                db.Deployments.Remove(dep);
+                await db.SaveChangesAsync();
+                Snackbar.Add($"Deployment #{deployment.Id} deleted permanently.", Severity.Warning);
+                await LoadArchivedData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to delete deployment: {ex.Message}", Severity.Error);
+        }
     }
 
     private Color GetStatusColor(DeploymentStatus status) => status switch

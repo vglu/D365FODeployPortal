@@ -246,6 +246,8 @@ try
         EnsureColumn("Deployments", "DevOpsTaskUrl", "TEXT NULL");
         EnsureColumn("Packages", "LicenseFileNames", "TEXT NULL");
         EnsureColumn("Deployments", "ReleaseUrl", "TEXT NULL");
+        EnsureColumn("Deployments", "IsArchived", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("Deployments", "ArchivedAt", "TEXT NULL");
 
         // Ensure placeholder environment for Release Pipeline deployments
         if (!db.Environments.Any(e => e.Name == "Release Pipeline"))

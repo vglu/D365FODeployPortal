@@ -155,8 +155,9 @@
         _envCount = envs.Count;
 
         await using var db = await DbFactory.CreateDbContextAsync();
-        _deployCount = await db.Deployments.CountAsync();
+        _deployCount = await db.Deployments.Where(d => !d.IsArchived).CountAsync();
         _recentDeployments = await db.Deployments
+            .Where(d => !d.IsArchived)
             .Include(d => d.Package)
             .Include(d => d.Environment)
             .OrderByDescending(d => d.QueuedAt)
