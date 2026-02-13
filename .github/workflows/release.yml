@@ -58,7 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: deploy-portal-windows
-          path: ${{ env.GITHUB_WORKSPACE }}/DeployPortal-${{ env.VERSION }}-win-x64.zip
+          path: DeployPortal-${{ env.VERSION }}-win-x64.zip
 
   # ---- Docker build → GitHub Container Registry (Packages) ----
   build-docker:
