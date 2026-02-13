@@ -127,4 +127,4 @@ This is a bugfix release. For new features, see [v1.3.0 Release Notes](RELEASE_N
 If you encounter any issues, please:
 1. Check the [documentation](docs/)
 2. Review logs in `C:\Temp\DeployPortal\logs` (Windows) or `/tmp/DeployPortal/logs` (Docker)
-3. Contact support: vhlushchenko@sisn.com
+3. Contact support: [vhlu@sims-service.com](mailto:vhlu@sims-service.com) — [Sims Tech](https://sims-service.com/)

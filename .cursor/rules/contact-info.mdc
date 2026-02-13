@@ -1,0 +1,28 @@
+---
+description: Contact and support information must use only Sims Tech / sims-service.com
+alwaysApply: true
+---
+
+# Contact Information — Sims Tech Only
+
+This product is published by **Sims Tech** ([https://sims-service.com/](https://sims-service.com/)). All user-facing contact and support information must use only the official details from that site.
+
+## Allowed
+
+- **Email:** [vhlu@sims-service.com](mailto:vhlu@sims-service.com) (from the site contact)
+- **Website:** https://sims-service.com/
+- **Company name:** Sims Tech / SIMS tech
+- **Product page:** https://sims-service.com/ (or the product subpath if applicable)
+
+## Not allowed
+
+- No other company or client emails (e.g. @sisn.com or other domains) in support/contact sections, README, release notes, or UI.
+- No other support or contact URLs unless they point to sims-service.com.
+
+## Where this applies
+
+- UI (footer, About dialog, help text)
+- README, docs, release notes (Support / Contact sections)
+- Any new support or “contact us” text
+
+When adding or editing support/contact text, use **vhlu@sims-service.com** and link to **https://sims-service.com/**.

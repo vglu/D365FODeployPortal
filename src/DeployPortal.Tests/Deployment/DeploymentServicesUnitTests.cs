@@ -136,7 +136,7 @@ public class DeploymentServicesUnitTests
             LogFilePath = Path.Combine(_testDir, "deploy.log"),
             PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
             // Real output from pac auth who (interactive auth) — no URL, but has Organization Friendly Name
-            PacAuthWhoOutput = @"Connected as vhlushchenko@sisn.com
+            PacAuthWhoOutput = @"Connected as user@example.com
 Type: User
 Organization Id: ef7d39e4-66d2-f011-8729-000d3a33a003
 Organization Friendly Name: CST-HFX-TST-07"
