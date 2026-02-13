@@ -10,6 +10,7 @@ using DeployPortal.Services.Deployment;
 using DeployPortal.Services.Deployment.Isolation;
 using DeployPortal.Services.Deployment.PacCli;
 using DeployPortal.Services.Deployment.Validation;
+using DeployPortal.Services.PackageContent;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -110,6 +111,9 @@ try
     builder.Services.AddScoped<SecretProtectionService>();
     builder.Services.AddScoped<EnvironmentService>();
     builder.Services.AddScoped<PackageService>();
+    builder.Services.AddScoped<IPackageContentService, PackageContentService>();
+    builder.Services.AddScoped<IPackageModificationService, PackageModificationService>();
+    builder.Services.AddScoped<IPackageChangeLogService, PackageChangeLogService>();
     builder.Services.AddScoped<MergeService>();
     builder.Services.AddScoped<ConvertService>();
     builder.Services.AddScoped<BuiltInConvertService>();
@@ -248,6 +252,35 @@ try
         EnsureColumn("Deployments", "ReleaseUrl", "TEXT NULL");
         EnsureColumn("Deployments", "IsArchived", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Deployments", "ArchivedAt", "TEXT NULL");
+
+        // Package change log table (feature/package-models-management)
+        void EnsurePackageChangeLogsTable(AppDbContext ctx)
+        {
+            var conn = ctx.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                conn.Open();
+            using var cmd = conn.CreateCommand();
+#pragma warning disable EF1002
+            cmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS PackageChangeLogs (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    PackageId INTEGER NOT NULL,
+                    ChangeType INTEGER NOT NULL,
+                    ItemType TEXT NOT NULL,
+                    ItemName TEXT NOT NULL,
+                    Details TEXT NULL,
+                    ChangedBy TEXT NULL,
+                    ChangedAt TEXT NOT NULL,
+                    PackageHashBefore TEXT NULL,
+                    FOREIGN KEY (PackageId) REFERENCES Packages(Id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS IX_PackageChangeLogs_PackageId ON PackageChangeLogs(PackageId);
+                CREATE INDEX IF NOT EXISTS IX_PackageChangeLogs_ChangedAt ON PackageChangeLogs(ChangedAt);";
+#pragma warning restore EF1002
+            cmd.ExecuteNonQuery();
+            Log.Information("Ensured PackageChangeLogs table exists");
+        }
+        EnsurePackageChangeLogsTable(db);
 
         // Ensure placeholder environment for Release Pipeline deployments
         if (!db.Environments.Any(e => e.Name == "Release Pipeline"))
