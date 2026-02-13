@@ -1,16 +1,16 @@
-# 🐳 Двухуровневая валидация и изоляция PAC auth в Docker контейнере
+# Two-Level Validation and PAC Auth Isolation in Docker
 
-## ✅ Статус: Полная совместимость
+## Status: Full Compatibility
 
-Решение с изолированными PAC auth директориями и двухуровневой валидацией **полностью работает в Docker контейнере** без каких-либо дополнительных изменений.
+The solution with isolated PAC auth directories and two-level validation **works fully inside the Docker container** with no extra changes.
 
 ---
 
-## 🔍 Проверка совместимости
+## Compatibility Check
 
-### 1. PAC CLI установлен в контейнере ✓
+### 1. PAC CLI installed in container ✓
 
-**Dockerfile, строки 50-61:**
+**Dockerfile, lines 50-61:**
 ```dockerfile
 ARG PAC_CLI_VERSION=1.49.4
 RUN apt-get update && \
@@ -20,24 +20,24 @@ RUN apt-get update && \
     chmod +x /usr/local/bin/pac
 ```
 
-PAC CLI доступен глобально в контейнере как `/usr/local/bin/pac`.
+PAC CLI is available globally in the container as `/usr/local/bin/pac`.
 
 ---
 
-### 2. Временная директория настроена ✓
+### 2. Temp directory configured ✓
 
-**Dockerfile, строка 80:**
+**Dockerfile, line 80:**
 ```dockerfile
 ENV DeployPortal__TempWorkingDir=/tmp/DeployPortal
 ```
 
-**docker-compose.yml, строка 30:**
+**docker-compose.yml, line 30:**
 ```yaml
 environment:
   - DeployPortal__TempWorkingDir=/tmp/DeployPortal
 ```
 
-Изолированные PAC auth папки будут создаваться в:
+Isolated PAC auth folders are created under:
 ```
 /tmp/DeployPortal/pac_auth_1_abc123/
 /tmp/DeployPortal/pac_auth_2_xyz789/
@@ -45,44 +45,44 @@ environment:
 
 ---
 
-### 3. Кросс-платформенный код ✓
+### 3. Cross-platform code ✓
 
-Все операции с файловой системой используют .NET API, которые автоматически адаптируются к ОС:
+All file system operations use .NET APIs that adapt to the OS:
 
-#### `Path.Combine` — автоматические разделители путей:
+#### `Path.Combine` — path separators:
 
-**DeploymentOrchestrator.cs, строка 139:**
+**DeploymentOrchestrator.cs, line 139:**
 ```csharp
 var isolatedAuthDir = Path.Combine(tempDir, $"pac_auth_{deploymentId}_{Guid.NewGuid():N}");
 ```
 
-**Результат:**
+**Result:**
 - Windows: `C:\Temp\DeployPortal\pac_auth_1_abc123`
 - Linux: `/tmp/DeployPortal/pac_auth_1_abc123`
 
-#### `Directory.CreateDirectory` — создание папок:
+#### `Directory.CreateDirectory` — create folders:
 
-**DeployService.cs, строка 46:**
+**DeployService.cs, line 46:**
 ```csharp
 Directory.CreateDirectory(isolatedAuthDir);
 ```
 
-Работает на всех платформах, автоматически создаёт родительские папки если нужно.
+Works on all platforms; creates parent directories if needed.
 
-#### `Directory.Delete(recursive: true)` — удаление папок:
+#### `Directory.Delete(recursive: true)` — remove folders:
 
-**DeployService.cs, строка 116:**
+**DeployService.cs, line 116:**
 ```csharp
 Directory.Delete(isolatedAuthDir, recursive: true);
 ```
 
-Работает на всех платформах, рекурсивно удаляет папку со всеми файлами внутри.
+Works on all platforms; recursively removes the folder and its contents.
 
 ---
 
-### 4. Переменная окружения `PAC_AUTH_PROFILE_DIRECTORY` ✓
+### 4. Environment variable `PAC_AUTH_PROFILE_DIRECTORY` ✓
 
-**DeployService.cs, RunPacCommandAsync и RunPacCommandWithOutputAsync:**
+**DeployService.cs, RunPacCommandAsync and RunPacCommandWithOutputAsync:**
 ```csharp
 var psi = new ProcessStartInfo
 {
@@ -94,25 +94,25 @@ var psi = new ProcessStartInfo
 psi.EnvironmentVariables["PAC_AUTH_PROFILE_DIRECTORY"] = isolatedAuthDir;
 ```
 
-`PAC_AUTH_PROFILE_DIRECTORY` — это официальная переменная окружения PAC CLI, работает на:
+`PAC_AUTH_PROFILE_DIRECTORY` is the official PAC CLI environment variable; supported on:
 - ✅ Windows
 - ✅ Linux
 - ✅ macOS
 
 ---
 
-### 5. Двухуровневая валидация ✓
+### 5. Two-level validation ✓
 
-Оба уровня валидации работают в контейнере:
+Both validation levels work in the container:
 
 #### CHECK 1 (PRE-DEPLOY): `pac auth who`
 ```csharp
 var whoOutput = await RunPacCommandWithOutputAsync("auth who", isolatedAuthDir);
 ```
 
-PAC CLI вернёт вывод независимо от платформы. Парсинг строки работает одинаково.
+PAC CLI returns output regardless of platform. String parsing is the same.
 
-#### CHECK 2 (POST-DEPLOY): Парсинг лог файла
+#### CHECK 2 (POST-DEPLOY): Log file parsing
 ```csharp
 var logContent = await File.ReadAllTextAsync(logFilePath);
 var uriLine = logContent
@@ -120,22 +120,22 @@ var uriLine = logContent
     .FirstOrDefault(line => line.Contains("Deployment Target Organization Uri:", ...));
 ```
 
-Чтение и парсинг текстового файла не зависит от платформы.
+Reading and parsing a text file is platform-independent.
 
 ---
 
-## 🧪 Тестирование в контейнере
+## Testing in the Container
 
-### Запуск контейнера:
+### Run the container:
 
 ```bash
-# Сборка образа
+# Build image
 docker build -t d365fo-deploy-portal .
 
-# Запуск через docker-compose
+# Run with docker-compose
 docker compose up -d
 
-# Или напрямую
+# Or directly
 docker run -d \
   -p 5000:5000 \
   -v deploy-data:/app/data \
@@ -144,17 +144,17 @@ docker run -d \
   d365fo-deploy-portal
 ```
 
-### Проверка логов:
+### Check logs:
 
 ```bash
-# Логи приложения
+# App logs
 docker compose logs -f deploy-portal
 
-# Или
+# Or
 docker logs -f deploy-portal
 ```
 
-### Ожидаемые логи при деплойменте:
+### Expected logs during deployment:
 
 ```
 [Isolation] Using dedicated PAC auth directory: /tmp/DeployPortal/pac_auth_3_4a5b6c7d...
@@ -175,120 +175,120 @@ Deployment completed.
 [Cleanup] Removed isolated PAC auth directory: /tmp/DeployPortal/pac_auth_3_4a5b6c7d...
 ```
 
-### Проверка что папки создаются и удаляются:
+### Verify folders are created and removed:
 
 ```bash
-# Подключиться к контейнеру
+# Attach to container
 docker exec -it deploy-portal bash
 
-# Проверить временную директорию
+# Check temp directory
 ls -la /tmp/DeployPortal/
 
-# Во время деплоймента вы увидите:
+# During deployment you will see:
 # pac_auth_1_abc123/
 # pac_auth_2_xyz789/
 
-# После завершения — папки удалены
+# After completion — folders are removed
 ```
 
 ---
 
-## 🎯 Параллельные деплойменты в контейнере
+## Parallel Deployments in the Container
 
-Контейнер поддерживает параллельные деплойменты на **несколько энвайронментов одновременно**:
+The container supports parallel deployments to **multiple environments at once**:
 
 ```
 Deployment #1 → /tmp/DeployPortal/pac_auth_1_abc123/ → cst-hfx-tst-07
 Deployment #2 → /tmp/DeployPortal/pac_auth_2_xyz789/ → cst-hfx-tst-05
 Deployment #3 → /tmp/DeployPortal/pac_auth_3_def456/ → infra-tst-01
 
-Все три работают параллельно, без конфликтов! ✓
+All three run in parallel, no conflicts! ✓
 ```
 
 ---
 
-## 📋 Checklist для production deployment
+## Production Deployment Checklist
 
-- [x] PAC CLI установлен в контейнере
-- [x] Временная директория настроена (`/tmp/DeployPortal`)
-- [x] Кросс-платформенный код (Path.Combine, Directory.*)
-- [x] `PAC_AUTH_PROFILE_DIRECTORY` работает в Linux
-- [x] Двухуровневая валидация работает в контейнере
-- [x] Автоматическая очистка временных папок
-- [x] Health check настроен (Dockerfile, строка 93-94)
-- [x] Volumes для persistent data (`/app/data`, `/app/packages`)
-
----
-
-## 🚀 Преимущества в контейнере
-
-### ✅ Изоляция процессов
-Каждый контейнер — это отдельное окружение. Даже если запустить несколько экземпляров контейнера, они не будут конфликтовать.
-
-### ✅ Чистое окружение
-При каждом запуске контейнера `/tmp/DeployPortal` очищается (если не использовать volumes для него).
-
-### ✅ Предсказуемость
-Одинаковое поведение на dev, staging и prod, потому что все используют один и тот же Docker образ.
-
-### ✅ Масштабируемость
-Можно запустить несколько экземпляров контейнера для обработки параллельных деплойментов (с shared volumes для БД и пакетов).
+- [x] PAC CLI installed in container
+- [x] Temp directory configured (`/tmp/DeployPortal`)
+- [x] Cross-platform code (Path.Combine, Directory.*)
+- [x] `PAC_AUTH_PROFILE_DIRECTORY` works on Linux
+- [x] Two-level validation works in container
+- [x] Automatic cleanup of temp folders
+- [x] Health check configured (Dockerfile, lines 93-94)
+- [x] Volumes for persistent data (`/app/data`, `/app/packages`)
 
 ---
 
-## ⚠️ Важные замечания
+## Benefits in the Container
+
+### Process isolation
+Each container is a separate environment. Even with multiple container instances, they do not conflict.
+
+### Clean environment
+On each container start, `/tmp/DeployPortal` is clean (unless you use a volume for it).
+
+### Predictability
+Same behavior on dev, staging, and prod because everyone uses the same Docker image.
+
+### Scalability
+You can run multiple container instances for parallel deployments (with shared volumes for DB and packages).
+
+---
+
+## Important Notes
 
 ### 1. Persistent data
 
-Убедитесь что используете Docker volumes для:
-- `/app/data` — база данных, encryption keys
-- `/app/packages` — загруженные пакеты
+Use Docker volumes for:
+- `/app/data` — database, encryption keys
+- `/app/packages` — uploaded packages
 
-**Иначе данные пропадут при перезапуске контейнера!**
+**Otherwise data is lost on container restart!**
 
-### 2. Логи деплоймента
+### 2. Deployment logs
 
-Логи деплоймента сохраняются в `/tmp/DeployPortal/logs/` внутри контейнера. Если нужен доступ к ним извне:
+Deployment logs are stored in `/tmp/DeployPortal/logs/` inside the container. To access them from the host:
 
 ```yaml
-# docker-compose.yml — добавить volume для логов
+# docker-compose.yml — add volume for logs
 volumes:
   - deploy-data:/app/data
   - deploy-packages:/app/packages
-  - deploy-logs:/tmp/DeployPortal/logs  # <-- логи
+  - deploy-logs:/tmp/DeployPortal/logs  # <-- logs
 
 volumes:
   deploy-logs:
     name: deploy-portal-logs
 ```
 
-Или использовать `docker cp`:
+Or use `docker cp`:
 ```bash
 docker cp deploy-portal:/tmp/DeployPortal/logs/deploy_1_20260213_120000.log ./
 ```
 
-### 3. Проверка PAC CLI версии
+### 3. PAC CLI version
 
-Если нужна другая версия PAC CLI:
+To use a different PAC CLI version:
 
 ```dockerfile
-# Dockerfile — изменить ARG
-ARG PAC_CLI_VERSION=1.50.0  # <-- ваша версия
+# Dockerfile — change ARG
+ARG PAC_CLI_VERSION=1.50.0  # <-- your version
 ```
 
-Текущая версия `1.49.4` — последняя версия для .NET 9 (PAC CLI 2.x требует .NET 10).
+Current version `1.49.4` is the latest targeting .NET 9 (PAC CLI 2.x requires .NET 10).
 
 ---
 
-## 📚 Связанная документация
+## Related Documentation
 
-- `docs/ДВУХУРОВНЕВАЯ_ВАЛИДАЦИЯ.md` — детальное описание обеих проверок
-- `docs/SOLUTION_IMPLEMENTED.md` — реализация изоляции PAC auth
-- `docs/README_DEPLOYMENT_FIX.md` — краткая сводка
-- `docs/PAC_AUTH_ISOLATION.md` — техническое описание изоляции
+- `docs/TWO_LEVEL_VALIDATION.md` — detailed description of both checks
+- `docs/SOLUTION_IMPLEMENTED.md` — PAC auth isolation implementation
+- `docs/README_DEPLOYMENT_FIX.md` — short summary
+- `docs/PAC_AUTH_ISOLATION.md` — technical isolation description
 
 ---
 
-**Дата:** 2026-02-13  
-**Статус:** ✅ Полная совместимость с Docker контейнером  
-**Тестирование:** Готово к запуску в контейнере
+**Date:** 2026-02-13  
+**Status:** ✅ Full compatibility with Docker container  
+**Testing:** Ready to run in container

@@ -1,60 +1,60 @@
-# SOLID Анализ и План рефакторинга DeployService
+# SOLID Analysis and DeployService Refactoring Plan
 
-## 🔍 Анализ текущего состояния
+## Current State Analysis
 
-### Нарушения SOLID принципов:
+### SOLID Violations:
 
 #### 1. **Single Responsibility Principle (SRP)** ⚠️
-`DeployService` делает слишком много:
-- Управление процессами (PAC CLI)
-- Аутентификация
-- Валидация (pre-deploy и post-deploy)
-- Работа с файловой системой (создание/удаление папок)
-- Парсинг логов
+`DeployService` does too much:
+- Process management (PAC CLI)
+- Authentication
+- Validation (pre-deploy and post-deploy)
+- File system (create/delete folders)
+- Log parsing
 
-**Проблема:** Класс имеет 5+ причин для изменения.
+**Problem:** The class has 5+ reasons to change.
 
 #### 2. **Open/Closed Principle (OCP)** ⚠️
-- Валидаторы зашиты внутри метода (сложно добавить новые проверки)
-- Парсинг лога жёстко привязан к формату PAC CLI
+- Validators are hardcoded inside the method (hard to add new checks)
+- Log parsing is tightly coupled to PAC CLI output format
 
-**Проблема:** Для добавления новой валидации нужно менять `DeployService`.
+**Problem:** Adding a new validator requires changing `DeployService`.
 
 #### 3. **Liskov Substitution Principle (LSP)** ✅
-Не применимо (нет наследования).
+Not applicable (no inheritance).
 
 #### 4. **Interface Segregation Principle (ISP)** ⚠️
-Нет интерфейсов вообще — невозможно мокать для тестов.
+No interfaces — cannot mock for tests.
 
-**Проблема:** Нельзя протестировать `DeployService` без реального PAC CLI.
+**Problem:** Cannot test `DeployService` without real PAC CLI.
 
 #### 5. **Dependency Inversion Principle (DIP)** ⚠️
-Зависимости от конкретных классов вместо абстракций:
-- `SettingsService` (конкретный класс)
-- `SecretProtectionService` (конкретный класс)
-- Прямой вызов `Process` (нет абстракции)
+Dependencies on concrete classes instead of abstractions:
+- `SettingsService` (concrete)
+- `SecretProtectionService` (concrete)
+- Direct `Process` usage (no abstraction)
 
-**Проблема:** Tight coupling, сложно тестировать.
+**Problem:** Tight coupling, hard to test.
 
 ---
 
-## ✅ План рефакторинга
+## Refactoring Plan
 
-### 1. Разделить ответственности (SRP)
+### 1. Split responsibilities (SRP)
 
-Создать отдельные компоненты:
+Introduce separate components:
 
 ```
-DeployService (оркестратор)
-  ├── IPacAuthService → аутентификация в PAC
-  ├── IPacDeploymentService → деплоймент пакетов
-  ├── IDeploymentValidator → валидация (коллекция)
+DeployService (orchestrator)
+  ├── IPacAuthService → PAC authentication
+  ├── IPacDeploymentService → package deployment
+  ├── IDeploymentValidator → validation (collection)
   │     ├── PreDeployAuthValidator (pac auth who)
-  │     └── PostDeployLogValidator (парсинг лога)
-  └── IIsolatedDirectoryManager → управление изолированными папками
+  │     └── PostDeployLogValidator (log parsing)
+  └── IIsolatedDirectoryManager → isolated folder management
 ```
 
-### 2. Применить Strategy Pattern для валидаторов (OCP)
+### 2. Apply Strategy Pattern for validators (OCP)
 
 ```csharp
 public interface IDeploymentValidator
@@ -66,7 +66,7 @@ public class PreDeployAuthValidator : IDeploymentValidator { }
 public class PostDeployLogValidator : IDeploymentValidator { }
 ```
 
-### 3. Ввести абстракции (ISP + DIP)
+### 3. Introduce abstractions (ISP + DIP)
 
 ```csharp
 public interface IPacCliExecutor
@@ -86,7 +86,7 @@ public interface IPacDeploymentService
 }
 ```
 
-### 4. Использовать Composite Pattern для валидаторов
+### 4. Use Composite Pattern for validators
 
 ```csharp
 public class CompositeDeploymentValidator : IDeploymentValidator
@@ -103,14 +103,14 @@ public class CompositeDeploymentValidator : IDeploymentValidator
 
 ---
 
-## 📁 Структура файлов после рефакторинга
+## File Structure After Refactoring
 
 ```
 src/DeployPortal/Services/
 ├── Deployment/
-│   ├── IDeployService.cs (интерфейс)
-│   ├── DeployService.cs (рефакторенный оркестратор)
-│   ├── DeploymentContext.cs (контекст для валидаторов)
+│   ├── IDeployService.cs (interface)
+│   ├── DeployService.cs (refactored orchestrator)
+│   ├── DeploymentContext.cs (context for validators)
 │   │
 │   ├── PacCli/
 │   │   ├── IPacCliExecutor.cs
@@ -133,49 +133,49 @@ src/DeployPortal/Services/
 
 ---
 
-## 🧪 Тестовое покрытие после рефакторинга
+## Test Coverage After Refactoring
 
 ### Unit Tests:
-- [x] `PacCliExecutorTests` — мок процесса
-- [x] `PacAuthServiceTests` — тесты аутентификации
-- [x] `PacDeploymentServiceTests` — тесты деплоймента
-- [x] `PreDeployAuthValidatorTests` — валидация pac auth who
-- [x] `PostDeployLogValidatorTests` — парсинг лога
-- [x] `IsolatedDirectoryManagerTests` — создание/удаление папок
-- [x] `DeployServiceTests` — оркестрация (мокаем все зависимости)
+- [x] `PacCliExecutorTests` — process mock
+- [x] `PacAuthServiceTests` — authentication tests
+- [x] `PacDeploymentServiceTests` — deployment tests
+- [x] `PreDeployAuthValidatorTests` — pac auth who validation
+- [x] `PostDeployLogValidatorTests` — log parsing
+- [x] `IsolatedDirectoryManagerTests` — create/delete folders
+- [x] `DeployServiceTests` — orchestration (all dependencies mocked)
 
 ### Integration Tests:
-- [x] `DeployServiceIntegrationTests` — с реальными файлами, но мок PAC CLI
+- [x] `DeployServiceIntegrationTests` — real files, mock PAC CLI
 
 ### E2E Tests:
-- [x] `DeploymentE2ETests` — полный сценарий с Docker Test Containers
+- [x] `DeploymentE2ETests` — full scenario with Docker Test Containers
 
 ---
 
-## 📊 Метрики улучшения
+## Improvement Metrics
 
-| Метрика | До рефакторинга | После рефакторинга |
-|---------|-----------------|---------------------|
-| Классов | 1 | 10 |
-| Строк в DeployService | 290 | ~80-100 |
-| Тестируемость | ❌ Нельзя мокать | ✅ Все интерфейсы |
+| Metric | Before | After |
+|--------|--------|-------|
+| Classes | 1 | 10 |
+| Lines in DeployService | 290 | ~80-100 |
+| Testability | ❌ Cannot mock | ✅ All interfaces |
 | Cyclomatic Complexity | ~15 | ~5 |
-| Причин для изменения (SRP) | 5+ | 1 |
+| Reasons to change (SRP) | 5+ | 1 |
 | Test Coverage | 0% | 90%+ |
 
 ---
 
-## 🚀 Порядок выполнения
+## Execution Order
 
-1. ✅ Создать интерфейсы и базовые классы
-2. ✅ Рефакторить DeployService (разбить на компоненты)
-3. ✅ Написать юнит-тесты для каждого компонента
-4. ✅ Написать интеграционные тесты
-5. ✅ Написать E2E тесты
-6. ✅ Обновить DI регистрации в Program.cs
-7. ✅ Проверить что всё работает (запустить реальный деплоймент)
+1. ✅ Create interfaces and base classes
+2. ✅ Refactor DeployService (split into components)
+3. ✅ Add unit tests for each component
+4. ✅ Add integration tests
+5. ✅ Add E2E tests
+6. ✅ Update DI registration in Program.cs
+7. ✅ Verify end-to-end (run a real deployment)
 
 ---
 
-**Статус:** Готов к началу рефакторинга  
-**Оценка времени:** ~200-300 tool calls
+**Status:** Ready to start refactoring  
+**Estimated effort:** ~200-300 tool calls

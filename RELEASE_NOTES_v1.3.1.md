@@ -57,7 +57,7 @@ The validator now passes if **either** method matches.
 ## 📄 Documentation
 
 Updated documentation to reflect the new validation logic:
-- **File:** `docs/ДВУХУРОВНЕВАЯ_ВАЛИДАЦИЯ.md`
+- **File:** `docs/TWO_LEVEL_VALIDATION.md`
 - **Section:** CHECK 1: PRE-DEPLOY валидация
 
 ---
@@ -68,7 +68,7 @@ Updated documentation to reflect the new validation logic:
 - `src/DeployPortal/Services/Deployment/Validation/PreDeployAuthValidator.cs` — enhanced validation logic
 - `src/DeployPortal.Tests/Deployment/DeploymentServicesUnitTests.cs` — added/updated tests
 - `src/DeployPortal/DeployPortal.csproj` — version bump to 1.3.1
-- `docs/ДВУХУРОВНЕВАЯ_ВАЛИДАЦИЯ.md` — documentation update
+- `docs/TWO_LEVEL_VALIDATION.md` — documentation update
 
 ### Docker Images
 - **Published to Docker Hub:**

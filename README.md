@@ -58,6 +58,8 @@ Summary of all ways to run and use the application:
 | **Published app (Windows)** | `.\publish.ps1` → run `publish/start.cmd` or `DeployPortal.exe` |
 | **CLI conversion (local, no UI)** | `dotnet run --project src/DeployPortal -- convert "C:\path\to\Lcs.zip" ["C:\path\to\Unified.zip"]` |
 
+**Releases & Packages:** ready-made builds — [GitHub Releases](https://github.com/vglu/D365FODeployPortal/releases) (Windows ZIP) and image [ghcr.io/vglu/d365fo-deploy-portal](https://github.com/vglu/D365FODeployPortal/pkgs/container/d365fo-deploy-portal). See [docs/RELEASES_AND_PACKAGES.md](docs/RELEASES_AND_PACKAGES.md).
+
 See sections below for details.
 
 ## Quick Start (Development)
@@ -93,6 +95,8 @@ Open `http://localhost:5137` in your browser.
 The application can be distributed as a Linux Docker container. This is the easiest way to deploy on any machine with Docker installed — no .NET, no dependencies.
 
 ### Quick Start (Docker)
+
+The image is published to **GitHub Container Registry**: `ghcr.io/vglu/d365fo-deploy-portal` (see [Releases & Packages](docs/RELEASES_AND_PACKAGES.md)). For local build:
 
 ```bash
 # Build and run with Docker Compose

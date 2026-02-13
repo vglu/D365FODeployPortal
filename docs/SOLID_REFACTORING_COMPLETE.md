@@ -1,130 +1,130 @@
-# ✅ SOLID Рефакторинг и Тестирование — ЗАВЕРШЕНО
+# SOLID Refactoring and Testing — Complete
 
-**Дата:** 2026-02-13
-
----
-
-## 📊 Итоговая статистика
-
-| Метрика | До рефакторинга | После рефакторинга | Улучшение |
-|---------|-----------------|---------------------|-----------|
-| **Классов** | 1 (`DeployService`) | 10 (разделены по ответственности) | +900% |
-| **Строк в DeployService** | 290 | ~130 (оркестратор) | -55% |
-| **Тестируемость** | ❌ Нельзя мокать | ✅ Все компоненты мокаемые | ✅ |
-| **Cyclomatic Complexity** | ~15 | ~3-5 (каждый класс) | -66% |
-| **Test Coverage** | 0% | 100% юнит-тестов для новых компонентов | +100% |
-| **SOLID нарушений** | 4 из 5 принципов | 0 (все принципы соблюдены) | ✅ |
+**Date:** 2026-02-13
 
 ---
 
-## 🏗️ Новая архитектура
+## Final Statistics
 
-### Созданные компоненты:
+| Metric | Before | After | Change |
+|--------|--------|-------|--------|
+| **Classes** | 1 (`DeployService`) | 10 (split by responsibility) | +900% |
+| **Lines in DeployService** | 290 | ~130 (orchestrator) | -55% |
+| **Testability** | ❌ Cannot mock | ✅ All components mockable | ✅ |
+| **Cyclomatic Complexity** | ~15 | ~3-5 per class | -66% |
+| **Test Coverage** | 0% | 100% unit tests for new components | +100% |
+| **SOLID violations** | 4 of 5 principles | 0 (all principles satisfied) | ✅ |
+
+---
+
+## New Architecture
+
+### Components created:
 
 ```
 src/DeployPortal/Services/Deployment/
-├── IDeployService.cs (интерфейс главного сервиса)
-├── DeployService.cs (оркестратор, ~130 строк)
-├── DeploymentContext.cs (контекст для валидаторов)
+├── IDeployService.cs (main service interface)
+├── DeployService.cs (orchestrator, ~130 lines)
+├── DeploymentContext.cs (context for validators)
 │
 ├── PacCli/
-│   ├── IPacCliExecutor.cs + PacCliExecutor.cs (абстракция над Process)
-│   ├── IPacAuthService.cs + PacAuthService.cs (аутентификация)
-│   └── IPacDeploymentService.cs + PacDeploymentService.cs (деплоймент)
+│   ├── IPacCliExecutor.cs + PacCliExecutor.cs (Process abstraction)
+│   ├── IPacAuthService.cs + PacAuthService.cs (authentication)
+│   └── IPacDeploymentService.cs + PacDeploymentService.cs (deployment)
 │
 ├── Validation/
-│   ├── IDeploymentValidator.cs (базовый интерфейс)
+│   ├── IDeploymentValidator.cs (base interface)
 │   ├── PreDeployAuthValidator.cs (CHECK 1: pac auth who)
-│   └── PostDeployLogValidator.cs (CHECK 2: парсинг лога)
+│   └── PostDeployLogValidator.cs (CHECK 2: log parsing)
 │
 └── Isolation/
     ├── IIsolatedDirectoryManager.cs
-    └── IsolatedDirectoryManager.cs (управление изолированными папками)
+    └── IsolatedDirectoryManager.cs (isolated folder management)
 ```
 
 ---
 
-## ✅ SOLID принципы — Как решено
+## SOLID Principles — How Addressed
 
 ### 1. **Single Responsibility Principle (SRP)** ✅
 
-**До:** `DeployService` делал 5+ вещей  
-**После:** Каждый класс имеет одну ответственность
+**Before:** `DeployService` did 5+ things  
+**After:** Each class has a single responsibility
 
-- `PacCliExecutor` — только запуск процессов
-- `PacAuthService` — только аутентификация
-- `PacDeploymentService` — только деплоймент
-- `PreDeployAuthValidator` — только PRE-DEPLOY валидация
-- `PostDeployLogValidator` — только POST-DEPLOY валидация
-- `IsolatedDirectoryManager` — только управление папками
-- `DeployService` — только оркестрация
+- `PacCliExecutor` — process execution only
+- `PacAuthService` — authentication only
+- `PacDeploymentService` — deployment only
+- `PreDeployAuthValidator` — PRE-DEPLOY validation only
+- `PostDeployLogValidator` — POST-DEPLOY validation only
+- `IsolatedDirectoryManager` — folder management only
+- `DeployService` — orchestration only
 
 ### 2. **Open/Closed Principle (OCP)** ✅
 
-**Решение:** Strategy Pattern для валидаторов
+**Solution:** Strategy pattern for validators
 
 ```csharp
-// Новый валидатор можно добавить БЕЗ изменения DeployService
+// New validator can be added WITHOUT changing DeployService
 builder.Services.AddScoped<IDeploymentValidator, NewValidator>();
 ```
 
 ### 3. **Liskov Substitution Principle (LSP)** ✅
 
-Не применимо (нет наследования, только интерфейсы).
+Not applicable (no inheritance, interfaces only).
 
 ### 4. **Interface Segregation Principle (ISP)** ✅
 
-**Решение:** Созданы маленькие специализированные интерфейсы
+**Solution:** Small, focused interfaces
 
-- `IPacCliExecutor` — только выполнение команд
-- `IPacAuthService` — только auth операции  
-- `IPacDeploymentService` — только deploy операции
-- `IDeploymentValidator` — только валидация
+- `IPacCliExecutor` — command execution only
+- `IPacAuthService` — auth operations only
+- `IPacDeploymentService` — deploy operations only
+- `IDeploymentValidator` — validation only
 
 ### 5. **Dependency Inversion Principle (DIP)** ✅
 
-**Решение:** Все зависимости через интерфейсы
+**Solution:** All dependencies via interfaces
 
 ```csharp
 public class DeployService : IDeployService
 {
-    private readonly IPacAuthService _authService;              // ✅ Интерфейс
-    private readonly IPacDeploymentService _deploymentService;  // ✅ Интерфейс
-    private readonly IIsolatedDirectoryManager _directoryManager; // ✅ Интерфейс
-    private readonly IEnumerable<IDeploymentValidator> _validators; // ✅ Интерфейс
+    private readonly IPacAuthService _authService;              // ✅ Interface
+    private readonly IPacDeploymentService _deploymentService;  // ✅ Interface
+    private readonly IIsolatedDirectoryManager _directoryManager; // ✅ Interface
+    private readonly IEnumerable<IDeploymentValidator> _validators; // ✅ Interface
 }
 ```
 
 ---
 
-## 🧪 Юнит-тесты
+## Unit Tests
 
-### Создано: 13 юнит-тестов
+### Created: 13 unit tests
 
-**Файл:** `src/DeployPortal.Tests/Deployment/DeploymentServicesUnitTests.cs`
+**File:** `src/DeployPortal.Tests/Deployment/DeploymentServicesUnitTests.cs`
 
-#### PacCliExecutor (3 теста):
-- ✅ Возвращает успешный результат (ExitCode = 0)
-- ✅ Возвращает ошибку (ExitCode != 0)
-- ✅ Вызывает callbacks для stdout/stderr
+#### PacCliExecutor (3 tests):
+- ✅ Returns success (ExitCode = 0)
+- ✅ Returns error (ExitCode != 0)
+- ✅ Invokes callbacks for stdout/stderr
 
-#### PreDeployAuthValidator (3 теста):
-- ✅ Проходит если URL env в `pac auth who` output
-- ✅ Бросает exception если URL неправильный
-- ✅ Бросает exception если `PacAuthWhoOutput` отсутствует
+#### PreDeployAuthValidator (3 tests):
+- ✅ Passes when env URL is in `pac auth who` output
+- ✅ Throws when URL is wrong
+- ✅ Throws when `PacAuthWhoOutput` is missing
 
-#### PostDeployLogValidator (4 теста):
-- ✅ Проходит если Organization Uri правильный
-- ✅ Бросает exception если Organization Uri неправильный
-- ✅ Не бросает exception если лог файл не найден (warning)
-- ✅ Не бросает exception если Uri не найден в логе (warning)
+#### PostDeployLogValidator (4 tests):
+- ✅ Passes when Organization Uri is correct
+- ✅ Throws when Organization Uri is wrong
+- ✅ Does not throw when log file not found (warning)
+- ✅ Does not throw when Uri not in log (warning)
 
-#### IsolatedDirectoryManager (3 теста):
-- ✅ Создаёт изолированную папку
-- ✅ Удаляет изолированную папку
-- ✅ Не бросает exception если папка не существует
+#### IsolatedDirectoryManager (3 tests):
+- ✅ Creates isolated folder
+- ✅ Removes isolated folder
+- ✅ Does not throw when folder does not exist
 
-**Результат:** ✅ **Все 13 тестов прошли успешно!**
+**Result:** ✅ **All 13 tests passed!**
 
 ```
 Passed!  - Failed: 0, Passed: 13, Skipped: 0, Total: 13
@@ -132,27 +132,27 @@ Passed!  - Failed: 0, Passed: 13, Skipped: 0, Total: 13
 
 ---
 
-## 📝 Обновлённые файлы
+## Updated Files
 
-### Изменённые файлы:
-- `src/DeployPortal/Program.cs` — обновлены DI регистрации
-- `src/DeployPortal/Services/DeploymentOrchestrator.cs` — использует `IDeployService`
+### Modified:
+- `src/DeployPortal/Program.cs` — updated DI registration
+- `src/DeployPortal/Services/DeploymentOrchestrator.cs` — uses `IDeployService`
 
-### Удалённые файлы:
-- `src/DeployPortal/Services/DeployService.cs` (старый монолитный класс)
+### Removed:
+- `src/DeployPortal/Services/DeployService.cs` (old monolithic class)
 
-### Добавлены:
-- 10 новых файлов сервисов (интерфейсы + реализации)
-- 1 файл юнит-тестов
+### Added:
+- 10 new service files (interfaces + implementations)
+- 1 unit test file
 
 ---
 
-## 🚀 Как использовать (DI)
+## Usage (DI)
 
-### Регистрация в `Program.cs`:
+### Registration in `Program.cs`:
 
 ```csharp
-// PAC CLI executor (абстракция над Process)
+// PAC CLI executor (Process abstraction)
 builder.Services.AddScoped<IPacCliExecutor>(sp =>
 {
     var settings = sp.GetRequiredService<SettingsService>();
@@ -168,7 +168,7 @@ builder.Services.AddScoped<IPacDeploymentService, PacDeploymentService>();
 // Isolation manager
 builder.Services.AddScoped<IIsolatedDirectoryManager, IsolatedDirectoryManager>();
 
-// Validators (порядок важен: сначала PRE-DEPLOY, потом POST-DEPLOY)
+// Validators (order matters: PRE-DEPLOY first, then POST-DEPLOY)
 builder.Services.AddScoped<IDeploymentValidator, PreDeployAuthValidator>();
 builder.Services.AddScoped<IDeploymentValidator, PostDeployLogValidator>();
 
@@ -176,7 +176,7 @@ builder.Services.AddScoped<IDeploymentValidator, PostDeployLogValidator>();
 builder.Services.AddScoped<IDeployService, DeployPortal.Services.Deployment.DeployService>();
 ```
 
-### Использование:
+### Usage:
 
 ```csharp
 public class DeploymentOrchestrator
@@ -200,10 +200,10 @@ public class DeploymentOrchestrator
 
 ---
 
-## 🎯 Преимущества рефакторинга
+## Refactoring Benefits
 
-### ✅ Тестируемость
-Каждый компонент можно протестировать изолированно с моками:
+### Testability
+Each component can be tested in isolation with mocks:
 
 ```csharp
 // Mock PAC CLI executor
@@ -213,8 +213,8 @@ executorMock
     .ReturnsAsync(new PacCliResult { ExitCode = 0, StandardOutput = "..." });
 ```
 
-### ✅ Расширяемость
-Добавить новый валидатор:
+### Extensibility
+Add a new validator:
 
 ```csharp
 public class MyCustomValidator : IDeploymentValidator
@@ -229,41 +229,41 @@ public class MyCustomValidator : IDeploymentValidator
 builder.Services.AddScoped<IDeploymentValidator, MyCustomValidator>();
 ```
 
-### ✅ Читаемость
-Каждый файл < 150 строк, понятная ответственность.
+### Readability
+Each file < 150 lines, clear responsibility.
 
-### ✅ Параллельные деплойменты
-Продолжают работать без изменений (изоляция через `IsolatedDirectoryManager`).
+### Parallel deployments
+Still work unchanged (isolation via `IsolatedDirectoryManager`).
 
-### ✅ Двухуровневая валидация
-Продолжает работать (CHECK 1 + CHECK 2) через валидаторы.
-
----
-
-## 📚 Документация
-
-- `docs/SOLID_REFACTORING_PLAN.md` — план рефакторинга и анализ SOLID
-- `docs/ДВУХУРОВНЕВАЯ_ВАЛИДАЦИЯ.md` — детали валидации (обновлена)
-- `docs/DOCKER_COMPATIBILITY.md` — совместимость с контейнером
-- `docs/README_DEPLOYMENT_FIX.md` — краткая сводка
+### Two-level validation
+Still in place (CHECK 1 + CHECK 2) via validators.
 
 ---
 
-## ⚠️ Известные ограничения
+## Documentation
 
-1. **Интеграционные тесты** не реализованы (требуется реальный PAC CLI)
-2. **E2E тесты** не реализованы (требуется реальный Power Platform env)
-3. Некоторые warning'и в юнит-тестах (async методы без await — не критично)
-
-**Статус:** Готово для использования в production! ✅
+- `docs/SOLID_REFACTORING_PLAN.md` — refactoring plan and SOLID analysis
+- `docs/TWO_LEVEL_VALIDATION.md` — validation details
+- `docs/DOCKER_COMPATIBILITY.md` — container compatibility
+- `docs/README_DEPLOYMENT_FIX.md` — short summary
 
 ---
 
-## 🔄 Обратная совместимость
+## Known Limitations
 
-✅ **Полная обратная совместимость**
+1. **Integration tests** not implemented (would require real PAC CLI)
+2. **E2E tests** not implemented (would require real Power Platform env)
+3. Some warnings in unit tests (async methods without await — non-critical)
 
-Старый код продолжает работать благодаря регистрации в DI:
+**Status:** Ready for production use! ✅
+
+---
+
+## Backward Compatibility
+
+✅ **Fully backward compatible**
+
+Existing callers keep working via DI registration:
 
 ```csharp
 // Backward compatibility
@@ -273,6 +273,6 @@ builder.Services.AddScoped<DeployService>(sp =>
 
 ---
 
-**Рефакторинг завершён!** 🎉  
-**Все тесты пройдены!** ✅  
-**SOLID принципы соблюдены!** ✅
+**Refactoring complete!** 🎉  
+**All tests passed!** ✅  
+**SOLID principles satisfied!** ✅

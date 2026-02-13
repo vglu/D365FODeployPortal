@@ -1,80 +1,80 @@
-# ✅ РЕШЕНИЕ РЕАЛИЗОВАНО: Изоляция PAC Auth
+# Solution Implemented: PAC Auth Isolation
 
-## Что было сделано
+## What Was Done
 
-Реализован **Вариант 3: Изолированный PAC_AUTH_PROFILE_DIR** для гарантии подключения к правильному энвайронменту при наличии Service Principal с доступом к нескольким энвайронментам.
+Implemented **Option 3: Isolated PAC_AUTH_PROFILE_DIR** to guarantee connection to the correct environment when a Service Principal has access to multiple environments.
 
 ---
 
-## Как это работает
+## How It Works
 
-### До изменений (проблемная ситуация):
+### Before changes (problematic case):
 
 ```
-PAC CLI использует глобальное хранилище auth profiles:
+PAC CLI uses global auth profile storage:
 %USERPROFILE%\.pac\auth\
 
 Deployment #1: pac auth create --environment cst-hfx-tst-07
                ↓
-           создаёт profile1 в глобальной папке
+           creates profile1 in global folder
                ↓
-           но SP имеет доступ к нескольким энвам
+           but SP has access to multiple envs
                ↓
-           PAC CLI выбирает c365afspmunified ❌
+           PAC CLI picks c365afspmunified ❌
                ↓
-           деплоймент идёт на НЕПРАВИЛЬНЫЙ энвайронмент!
+           deployment goes to WRONG environment!
 ```
 
-### После изменений (решение с двойной проверкой):
+### After changes (solution with dual validation):
 
 ```
 Deployment #1 (cst-hfx-tst-07):
    isolatedAuthDir = C:\Temp\DeployPortal\pac_auth_1_abc123...
    PAC_AUTH_PROFILE_DIRECTORY = isolatedAuthDir
    ↓
-   pac auth create → сохраняется ТОЛЬКО в pac_auth_1_abc123
+   pac auth create → stored ONLY in pac_auth_1_abc123
    ↓
-   [CHECK 1] pac auth who → валидация (проверяем что URL правильный)
-   ↓ если неправильный → Exception ДО начала деплоя
-   ↓ если правильный → продолжаем
+   [CHECK 1] pac auth who → validation (verify URL is correct)
+   ↓ if wrong → Exception before deploy
+   ↓ if correct → continue
    ↓
-   pac package deploy → берёт auth ТОЛЬКО из pac_auth_1_abc123
+   pac package deploy → uses auth ONLY from pac_auth_1_abc123
    ↓
-   [CHECK 2] парсим лог файл → проверяем "Deployment Target Organization Uri"
-   ↓ если неправильный → Exception, деплоймент Failed
-   ↓ если правильный → Success
+   [CHECK 2] parse log file → verify "Deployment Target Organization Uri"
+   ↓ if wrong → Exception, deployment Failed
+   ↓ if correct → Success
    ↓
-   деплоймент завершён на ПРАВИЛЬНОМ энвайронменте ✅✅
+   deployment completed on CORRECT environment ✅✅
    ↓
-   папка удаляется
+   folder removed
 
-Deployment #2 (параллельно на cst-hfx-tst-05):
+Deployment #2 (in parallel to cst-hfx-tst-05):
    isolatedAuthDir = C:\Temp\DeployPortal\pac_auth_2_xyz789...
    PAC_AUTH_PROFILE_DIRECTORY = isolatedAuthDir
    ↓
-   полностью изолирован от Deployment #1! ✅
+   fully isolated from Deployment #1! ✅
 ```
 
 ---
 
-## Изменённые файлы
+## Modified Files
 
 ### 1. `src/DeployPortal/Services/DeployService.cs`
 
-**Добавлено:**
-- ✅ Параметр `isolatedAuthDir` в `DeployPackageAsync`
-- ✅ Установка `PAC_AUTH_PROFILE_DIRECTORY` для всех PAC CLI вызовов
-- ✅ Новый метод `RunPacCommandWithOutputAsync` для захвата вывода
-- ✅ Валидация через `pac auth who` после аутентификации
-- ✅ Автоматическая очистка в `finally` блоке
-- ✅ Детальные логи изоляции и валидации
+**Added:**
+- ✅ Parameter `isolatedAuthDir` in `DeployPackageAsync`
+- ✅ Setting `PAC_AUTH_PROFILE_DIRECTORY` for all PAC CLI calls
+- ✅ New method `RunPacCommandWithOutputAsync` to capture output
+- ✅ Validation via `pac auth who` after authentication
+- ✅ Automatic cleanup in `finally` block
+- ✅ Detailed isolation and validation logging
 
-**Ключевой код:**
+**Key code:**
 ```csharp
-// Каждый PAC CLI процесс получает уникальную папку
+// Each PAC CLI process gets a unique folder
 psi.EnvironmentVariables["PAC_AUTH_PROFILE_DIRECTORY"] = isolatedAuthDir;
 
-// Проверка что подключились к правильному энву
+// Verify we connected to the correct env
 if (!whoOutput.Contains(environment.Url, StringComparison.OrdinalIgnoreCase))
 {
     throw new InvalidOperationException(
@@ -84,11 +84,11 @@ if (!whoOutput.Contains(environment.Url, StringComparison.OrdinalIgnoreCase))
 
 ### 2. `src/DeployPortal/Services/DeploymentOrchestrator.cs`
 
-**Добавлено:**
-- ✅ Создание уникального `isolatedAuthDir` для каждого деплоймента
-- ✅ Передача `isolatedAuthDir` в `DeployPackageAsync`
+**Added:**
+- ✅ Creation of unique `isolatedAuthDir` per deployment
+- ✅ Passing `isolatedAuthDir` to `DeployPackageAsync`
 
-**Код:**
+**Code:**
 ```csharp
 var isolatedAuthDir = Path.Combine(tempDir, $"pac_auth_{deploymentId}_{Guid.NewGuid():N}");
 
@@ -96,52 +96,52 @@ await deployService.DeployPackageAsync(
     deployment.Environment,
     deployDir,
     logFilePath,
-    isolatedAuthDir,  // ← изолированная папка
+    isolatedAuthDir,  // ← isolated folder
     msg => Log(msg));
 ```
 
 ---
 
-## Преимущества решения
+## Benefits
 
-### ✅ Полная изоляция
-Каждый деплоймент работает со своим auth profile. Никакого глобального состояния.
+### Full isolation
+Each deployment uses its own auth profile. No global state.
 
-### ✅ Параллельные деплойменты
-Можно деплоить на несколько энвайронментов одновременно без конфликтов:
+### Parallel deployments
+You can deploy to multiple environments at once without conflicts:
 ```
-Deployment #1 → Cst-hfx-tst-07 (параллельно)
-Deployment #2 → CST-HFX-TST-05 (параллельно)
-Deployment #3 → Infra-tst-01 (параллельно)
+Deployment #1 → Cst-hfx-tst-07 (parallel)
+Deployment #2 → CST-HFX-TST-05 (parallel)
+Deployment #3 → Infra-tst-01 (parallel)
 ```
 
-### ✅ Двухуровневая валидация
+### Two-level validation
 
-**Уровень 1 (PRE-DEPLOY): Проверка `pac auth who`**
-- Выполняется **ДО** начала деплоймента
-- Если неправильный энв → Exception **БЕЗ применения пакета**
-- Быстрая проверка (< 1 секунды)
+**Level 1 (PRE-DEPLOY): `pac auth who` check**
+- Runs **before** deployment starts
+- If wrong env → Exception **without applying package**
+- Fast check (< 1 second)
 
-**Уровень 2 (POST-DEPLOY): Проверка лог файла**
-- Выполняется **ПОСЛЕ** деплоймента
-- Парсит "Deployment Target Organization Uri" из лога
-- Финальное подтверждение что пакет применён на правильном энве
-- Если неправильный → деплоймент помечается Failed с детальным сообщением
+**Level 2 (POST-DEPLOY): Log file check**
+- Runs **after** deployment
+- Parses "Deployment Target Organization Uri" from log
+- Final confirmation that package was applied to correct env
+- If wrong → deployment marked Failed with detailed message
 
-### ✅ Автоматическая очистка
-Папка `pac_auth_*` удаляется после деплоймента (даже если был Exception).
+### Automatic cleanup
+`pac_auth_*` folder is removed after deployment (even on Exception).
 
-### ✅ Независимость от глобального состояния
-Не важно:
-- Кто и когда запускал `pac auth` вручную
-- Есть ли старые auth profiles в `%USERPROFILE%\.pac\auth`
-- Какой auth был активным до запуска
+### Independence from global state
+It does not matter:
+- Who ran `pac auth` manually and when
+- Whether old auth profiles exist in `%USERPROFILE%\.pac\auth`
+- Which auth was active before the run
 
 ---
 
-## Что будет в логах
+## What You’ll See in Logs
 
-При следующем деплойменте вы увидите **двухуровневую валидацию**:
+On the next deployment you’ll see **two-level validation**:
 
 ```
 [Isolation] Using dedicated PAC auth directory: C:\Temp\DeployPortal\pac_auth_3_4a5b6c7d8e9f...
@@ -155,7 +155,7 @@ Connection verified.
 Starting deployment to Cst-hfx-tst-07...
 Package: D:\Temp\...\TemplatePackage.dll
 ...
-(деплоймент идёт...)
+(deployment in progress...)
 ...
 Deployment to Cst-hfx-tst-07 completed.
 
@@ -168,9 +168,9 @@ Deployment to Cst-hfx-tst-07 completed.
 [Cleanup] Removed isolated PAC auth directory: C:\Temp\DeployPortal\pac_auth_3_4a5b6c7d8e9f...
 ```
 
-### Если что-то пойдёт не так:
+### If something goes wrong
 
-**Сценарий 1: PAC auth подключился к неправильному энву (CHECK 1 провален):**
+**Scenario 1: PAC auth connected to wrong env (CHECK 1 failed):**
 ```
 [Validation] Confirmed connected to correct environment: cst-hfx-tst-07.crm.dynamics.com
 Connection verified.
@@ -178,10 +178,10 @@ Connection verified.
         Expected environment: cst-hfx-tst-07.crm.dynamics.com, 
         but 'pac auth who' returned different environment.
 
-Deployment FAILED (ДО начала деплоя — ничего не применено) ✓
+Deployment FAILED (before deploy — nothing applied) ✓
 ```
 
-**Сценарий 2: Деплоймент пошёл на неправильный энв (CHECK 2 провален):**
+**Scenario 2: Deploy went to wrong env (CHECK 2 failed):**
 ```
 Deployment to Cst-hfx-tst-07 completed.
 [Post-Deploy Validation] Verifying deployment target from log file...
@@ -191,57 +191,57 @@ Deployment to Cst-hfx-tst-07 completed.
         Expected: cst-hfx-tst-07.crm.dynamics.com
         Actual: c365afspmunified.crm.dynamics.com
 
-Deployment marked as FAILED (но пакет УЖЕ применён на неправильном энве) ⚠️
+Deployment marked as FAILED (package already applied to wrong env) ⚠️
 ```
 
-Второй сценарий маловероятен если первая проверка прошла, но добавляет дополнительную уверенность.
+The second scenario is unlikely if the first check passed, but adds extra confidence.
 
 ---
 
-## Тестирование
+## Testing
 
-### Шаг 1: Запустите деплоймент
-1. Откройте портал: http://localhost:5137/deploy
-2. Выберите пакет и environment "Cst-hfx-tst-07"
-3. Запустите деплоймент
+### Step 1: Run a deployment
+1. Open the portal: http://localhost:5137/deploy
+2. Select a package and environment "Cst-hfx-tst-07"
+3. Start deployment
 
-### Шаг 2: Проверьте логи
-1. В UI портала смотрите реалтайм логи
-2. Найдите строку `[Isolation] Using dedicated PAC auth directory:`
-3. Найдите строку `[Validation] Confirmed connected to correct environment:`
+### Step 2: Check logs
+1. In the portal UI, watch real-time logs
+2. Find the line `[Isolation] Using dedicated PAC auth directory:`
+3. Find the line `[Validation] Confirmed connected to correct environment:`
 
-### Шаг 3: Проверьте итоговый лог файл
+### Step 3: Check the final log file
 ```powershell
-# После завершения деплоймента
+# After deployment completes
 $logPath = "C:\Temp\DeployPortal\logs\deploy_X_YYYYMMDD_HHMMSS.log"
 Select-String "Deployment Target Organization Uri" $logPath
 ```
 
-Должно быть:
+You should see:
 ```
 Deployment Target Organization Uri: https://cst-hfx-tst-07.crm.dynamics.com/...
 ```
 
-### Шаг 4: Тест параллельных деплойментов
-Запустите два деплоймента одновременно на разные энвайронменты и убедитесь что оба работают корректно.
+### Step 4: Test parallel deployments
+Run two deployments at the same time to different environments and confirm both succeed.
 
 ---
 
-## Документация
+## Documentation
 
-Полная документация сохранена в:
-- `docs/PAC_AUTH_ISOLATION.md` — техническое описание решения
-
----
-
-## Статус
-
-- ✅ Код реализован
-- ✅ Компиляция успешна
-- ✅ Linter ошибок нет
-- ⏳ Требуется тестирование на реальном деплойменте
+Full documentation is in:
+- `docs/PAC_AUTH_ISOLATION.md` — technical description of the solution
 
 ---
 
-Дата реализации: 2026-02-13  
-Причина: Решение проблемы деплойментов #1 и #2 на неправильный энвайронмент
+## Status
+
+- ✅ Code implemented
+- ✅ Build succeeds
+- ✅ No linter errors
+- ⏳ Pending testing on a real deployment
+
+---
+
+Implementation date: 2026-02-13  
+Reason: Fix for deployments #1 and #2 going to the wrong environment
