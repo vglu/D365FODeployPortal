@@ -32,11 +32,11 @@
 - Временная директория настроена: `/tmp/DeployPortal`
 - Весь код кросс-платформенный (Path.Combine, Directory.*)
 - `PAC_AUTH_PROFILE_DIRECTORY` работает в Linux
-- Подробнее: `docs/DOCKER_COMPATIBILITY.md`
+- Подробнее: `DOCKER_COMPATIBILITY.md`
 
 ## Документация
-- `docs/PAC_AUTH_ISOLATION.md` — техническое описание
-- `docs/SOLUTION_IMPLEMENTED.md` — детали реализации
+- `PAC_AUTH_ISOLATION.md` — техническое описание
+- `SOLUTION_IMPLEMENTED.md` — детали реализации
 - `ANALYSIS_DEPLOYMENT_ISSUE.md` — анализ проблемы
 - `FINAL_ANALYSIS_WITH_DB_DATA.md` — данные из БД и логов
 

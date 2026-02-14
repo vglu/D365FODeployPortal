@@ -1,7 +1,8 @@
-﻿==============================================
+EXAMPLE REPORT — Package and module names are from a sample run; use only as format reference.
+==============================================
   ROUND-TRIP COMPARISON REPORT (LCS -> Unified -> LCS)
 ==============================================
-Generated: 2026-02-11 03:24:08
+Generated: 2026-02-11 03:24:08 (sample)
 BaseUrl: http://localhost:5000
 
 --- SUMMARY ---

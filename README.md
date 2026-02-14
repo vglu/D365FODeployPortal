@@ -52,13 +52,13 @@ Summary of all ways to run and use the application:
 
 | Scenario | Command / Link |
 |----------|-----------------|
-| **Development (local)** | `.\run.ps1` or `dotnet watch --project src/DeployPortal --urls "http://localhost:5137"` |
+| **Development (local)** | **PowerShell:** `.\run.ps1` or `dotnet watch --project src/DeployPortal --urls "http://localhost:5137"` — **CMD:** `powershell -NoProfile -File run.ps1` |
 | **Docker — web UI** | `docker compose up -d` → open http://localhost:5000 |
-| **Docker — CLI conversion** | `docker run --rm -v /path/to/packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip [/data/Unified.zip]` |
-| **Published app (Windows)** | `.\publish.ps1` → run `publish/start.cmd` or `DeployPortal.exe` |
-| **CLI conversion (local, no UI)** | `dotnet run --project src/DeployPortal -- convert "C:\path\to\Lcs.zip" ["C:\path\to\Unified.zip"]` |
+| **Docker — CLI conversion** | See [Command-line conversion](#command-line-conversion-cli) below (paths for Windows CMD, PowerShell, Linux). |
+| **Published app (Windows)** | **PowerShell:** `.\publish.ps1` — **CMD:** `powershell -NoProfile -File publish.ps1` — then run `publish\start.cmd` or `publish\DeployPortal.exe` |
+| **CLI conversion (local, no UI)** | **PowerShell:** `dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip" "C:\Packages\MyUnified.zip"` — **CMD:** `dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip" "C:\Packages\MyUnified.zip"` |
 
-**Releases & Packages:** ready-made builds — [GitHub Releases](https://github.com/vglu/D365FODeployPortal/releases) (Windows ZIP) and image [ghcr.io/vglu/d365fo-deploy-portal](https://github.com/vglu/D365FODeployPortal/pkgs/container/d365fo-deploy-portal). See [docs/RELEASES_AND_PACKAGES.md](docs/RELEASES_AND_PACKAGES.md).
+**Releases & Packages:** ready-made builds — [GitHub Releases](https://github.com/vglu/D365FODeployPortal/releases) (Windows ZIP) and image [ghcr.io/vglu/d365fo-deploy-portal](https://github.com/vglu/D365FODeployPortal/pkgs/container/d365fo-deploy-portal). See [documents/RELEASES_AND_PACKAGES.md](documents/RELEASES_AND_PACKAGES.md).
 
 See sections below for details.
 
@@ -73,11 +73,17 @@ See sections below for details.
 
 ### Run
 
+**PowerShell (from project root):**
 ```powershell
-# From project root
 .\run.ps1
+# Or manually:
+dotnet watch --project src/DeployPortal --urls "http://localhost:5137"
+```
 
-# Or manually
+**CMD (from project root):**
+```cmd
+powershell -NoProfile -File run.ps1
+REM Or manually:
 dotnet watch --project src/DeployPortal --urls "http://localhost:5137"
 ```
 
@@ -96,7 +102,7 @@ The application can be distributed as a Linux Docker container. This is the easi
 
 ### Quick Start (Docker)
 
-The image is published to **GitHub Container Registry**: `ghcr.io/vglu/d365fo-deploy-portal` (see [Releases & Packages](docs/RELEASES_AND_PACKAGES.md)). For local build:
+The image is published to **GitHub Container Registry**: `ghcr.io/vglu/d365fo-deploy-portal` (see [Releases & Packages](documents/RELEASES_AND_PACKAGES.md)). For local build:
 
 ```bash
 # Build and run with Docker Compose
@@ -190,35 +196,51 @@ You can use the container only for LCS → Unified conversion, without starting 
 
 **Examples:**
 
+**Windows — CMD:** (use `C:\Packages` or your folder; inside container the mount is `/data`)
+```cmd
+docker run --rm -v C:\Packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip /data/MyUnified.zip
+REM Output omitted — creates /data/MyLcs_Unified.zip
+docker run --rm -v C:\Packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip
+```
+
+**Windows — PowerShell:**
+```powershell
+docker run --rm -v C:\Packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip /data/MyUnified.zip
+# Output omitted — creates /data/MyLcs_Unified.zip
+docker run --rm -v C:\Packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip
+```
+
+**Linux/macOS:**
 ```bash
-# Convert one package; output file is optional (default: <name>_Unified.zip next to input)
-docker run --rm -v D:\Downloads\SCT:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip /data/MyUnified.zip
-
-# Output path omitted — creates /data/MyLcs_Unified.zip
-docker run --rm -v D:\Downloads\SCT:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip
-
-# Linux/macOS paths
-docker run --rm -v /home/user/packages:/data vglu/d365fo-deploy-portal:latest convert /data/PCM-AL-10.0.45.67.25.12.01.P1.zip /data/Unified.zip
+docker run --rm -v /home/user/packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcsPackage.zip /data/Unified.zip
 ```
 
 **Using environment variables (e.g. in scripts):**
 
-```bash
-docker run --rm \
-  -v D:\Downloads:/data \
-  -e CONVERT_INPUT=/data/package.zip \
-  -e CONVERT_OUTPUT=/data/out.zip \
-  vglu/d365fo-deploy-portal:latest convert
+**CMD:**
+```cmd
+docker run --rm -v C:\Packages:/data -e CONVERT_INPUT=/data/package.zip -e CONVERT_OUTPUT=/data/out.zip vglu/d365fo-deploy-portal:latest convert
+```
+
+**PowerShell:**
+```powershell
+docker run --rm -v C:\Packages:/data -e CONVERT_INPUT=/data/package.zip -e CONVERT_OUTPUT=/data/out.zip vglu/d365fo-deploy-portal:latest convert
 ```
 
 **CLI conversion without Docker (local .NET):**
 
+**PowerShell (from repository root):**
 ```powershell
-# From repository root
-dotnet run --project src/DeployPortal -- convert "D:\Downloads\MyLcs.zip" "D:\Downloads\MyUnified.zip"
+dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip" "C:\Packages\MyUnified.zip"
+# Default output: same folder, <name>_Unified.zip
+dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip"
+```
 
-# Default output: same folder, name_Unified.zip
-dotnet run --project src/DeployPortal -- convert "D:\Downloads\MyLcs.zip"
+**CMD (from repository root):**
+```cmd
+dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip" "C:\Packages\MyUnified.zip"
+REM Default output: same folder, <name>_Unified.zip
+dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip"
 ```
 
 If the output path is omitted, the result is written as `<input name>_Unified.zip` in the same directory as the input file. Exit codes: `0` = success, `1` = usage/input error, `2` = template not found, `3` = conversion error.
@@ -232,8 +254,14 @@ If the output path is omitted, the result is written as `<input name>_Unified.zi
 
 To create a self-contained application that can run on any Windows machine without .NET installed:
 
+**PowerShell:**
 ```powershell
 .\publish.ps1
+```
+
+**CMD:**
+```cmd
+powershell -NoProfile -File publish.ps1
 ```
 
 This creates a `publish/` folder containing:
@@ -251,15 +279,18 @@ publish/
 
 ### Publish Options
 
+**PowerShell:**
 ```powershell
-# Default (folder with all files)
 .\publish.ps1
-
-# Custom output directory
 .\publish.ps1 -OutputDir "C:\Deploy\DeployPortal"
-
-# Single-file executable (slower startup, but one file)
 .\publish.ps1 -SingleFile
+```
+
+**CMD:** (paths work the same)
+```cmd
+powershell -NoProfile -File publish.ps1
+powershell -NoProfile -File publish.ps1 -OutputDir "C:\Deploy\DeployPortal"
+powershell -NoProfile -File publish.ps1 -SingleFile
 ```
 
 ## Transferring to Another Machine
@@ -281,8 +312,10 @@ Copy the entire `publish/` folder to the target machine. That's it — .NET Runt
 
 ### Setup on Target Machine
 
-1. **Copy** the `publish/` folder to the target machine
-2. **Run** `start.cmd` (or `DeployPortal.exe --urls "http://localhost:5000"`)
+1. **Copy** the `publish/` folder to the target machine (e.g. `C:\DeployPortal`).
+2. **Run** from the publish folder:
+   - **CMD:** `start.cmd` or `DeployPortal.exe --urls "http://localhost:5000"`
+   - **PowerShell:** `.\start.cmd` or `.\DeployPortal.exe --urls "http://localhost:5000"`
 3. **Open** `http://localhost:5000` in browser
 4. **Go to Settings** → configure:
    - `ModelUtil.exe` path (if needed for LCS conversion)
@@ -295,15 +328,13 @@ Copy the entire `publish/` folder to the target machine. That's it — .NET Runt
 
 ### Changing Port
 
-```cmd
-DeployPortal.exe --urls "http://localhost:8080"
-```
+**CMD:** `DeployPortal.exe --urls "http://localhost:8080"`  
+**PowerShell:** `.\DeployPortal.exe --urls "http://localhost:8080"`
 
 ### Remote Access
 
-```cmd
-DeployPortal.exe --urls "http://0.0.0.0:5000"
-```
+**CMD:** `DeployPortal.exe --urls "http://0.0.0.0:5000"`  
+**PowerShell:** `.\DeployPortal.exe --urls "http://0.0.0.0:5000"`
 
 > **Warning:** No authentication is built in. Do not expose to the internet without a reverse proxy with auth.
 
@@ -313,15 +344,18 @@ A Service Principal (App Registration) in Azure AD is required for non-interacti
 
 ### Automated Setup
 
+**PowerShell (from folder containing the script):**
 ```powershell
-# Full setup — creates SP and registers in all default environments
 .\Setup-ServicePrincipal.ps1
-
-# Full setup with custom environment list
 .\Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
-
-# Add a new environment to an existing SP
 .\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
+```
+
+**CMD (same folder):**
+```cmd
+powershell -NoProfile -File Setup-ServicePrincipal.ps1
+powershell -NoProfile -File Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
+powershell -NoProfile -File Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
 ```
 
 **Required permissions to run:** Global Administrator or Application Administrator in Azure AD, System Administrator in Power Platform environments.
@@ -347,7 +381,7 @@ This output can be pasted directly into the **Import from Script** dialog on the
 
 ### Settings Priority
 
-1. **UI Settings** (`usersettings.json`) — highest priority, managed via Settings page. Path: `%LocalAppData%\DeployPortal\usersettings.json` (Windows) or set `DeployPortal:UserSettingsPath` (e.g. in Docker: `/app/data/usersettings.json` so it’s in the volume).
+1. **UI Settings** (`usersettings.json`) — highest priority, managed via Settings page. Path (Windows): **CMD** `%LocalAppData%\DeployPortal\usersettings.json` — **PowerShell** `$env:LOCALAPPDATA\DeployPortal\usersettings.json`. In Docker: `/app/data/usersettings.json` (in volume).
 2. **appsettings.json** — default values
 3. **Built-in defaults** — auto-detection (PAC from PATH, storage in app directory)
 
@@ -355,19 +389,19 @@ This output can be pasted directly into the **Import from Script** dialog on the
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `ModelUtilPath` | Full path to `ModelUtil.exe` | Auto-detect from `%LocalAppData%\Microsoft\Dynamics365\` |
+| `ModelUtilPath` | Full path to `ModelUtil.exe` | Auto-detect: **CMD** `%LocalAppData%\Microsoft\Dynamics365\` — **PS** `$env:LOCALAPPDATA\Microsoft\Dynamics365\` |
 | `PacCliPath` | Full path to `pac.cmd` or `pac.exe` | Auto-detect from system PATH |
-| `PackageStoragePath` | Directory for uploaded packages | `<app directory>/Packages` |
-| `TempWorkingDir` | Temp directory for merge/convert | `%TEMP%/DeployPortal` |
-| `DatabasePath` | Path to SQLite database file | `<app directory>/deploy-portal.db` |
-| `UserSettingsPath` | Path to UI settings JSON file (optional; if not set, uses `%LocalAppData%\DeployPortal\usersettings.json`) | *(empty)* |
+| `PackageStoragePath` | Directory for uploaded packages | `<app directory>\Packages` (e.g. `C:\DeployPortal\Packages`) |
+| `TempWorkingDir` | Temp directory for merge/convert | **CMD** `%TEMP%\DeployPortal` — **PS** `$env:TEMP\DeployPortal` |
+| `DatabasePath` | Path to SQLite database file | `<app directory>\deploy-portal.db` |
+| `UserSettingsPath` | Path to UI settings JSON (optional) | **CMD** `%LocalAppData%\DeployPortal\usersettings.json` — **PS** `$env:LOCALAPPDATA\DeployPortal\usersettings.json` |
 | `LcsTemplatePath` | Optional path to LCS template (folder or .zip) for **Unified→LCS** conversion | *(empty)* |
 
 ### LCS template (Unified→LCS)
 
 When you convert a package from Unified back to LCS, the default output contains only the converted modules, `HotfixInstallationInfo.xml`, and license files — without the full LCS “skeleton” (e.g. `AXUpdateInstaller.exe`, DLLs, Scripts, other files). If you need the result to match the structure of an original LCS package (e.g. for deployment or comparison), set **LCS Template** in Settings:
 
-- **Path:** A folder or a .zip file that contains the full LCS structure (one root folder with `AOSService`, `HotfixInstallationInfo.xml`, executables, Scripts, etc.). Good options: an LCS package from the asset library, or a **Custom deployable package** from your dev machine, e.g. `PackagesLocalDirectory\bin\CustomDeployablePackage\ImportISVLicense.zip` (path like `C:\Users\<you>\AppData\Local\Microsoft\Dynamics365\RuntimeSymLinks\<env>\PackagesLocalDirectory\bin\CustomDeployablePackage\ImportISVLicense.zip`). You can leave `Scripts/License` in the template empty; the converter overwrites it.
+- **Path:** A folder or a .zip file that contains the full LCS structure (one root folder with `AOSService`, `HotfixInstallationInfo.xml`, executables, Scripts, etc.). Good options: an LCS package from the asset library, or a **Custom deployable package** from your dev machine, e.g. `PackagesLocalDirectory\bin\CustomDeployablePackage\ImportISVLicense.zip`. Full path examples: **CMD** `C:\Users\%USERNAME%\AppData\Local\Microsoft\Dynamics365\RuntimeSymLinks\<env>\PackagesLocalDirectory\bin\CustomDeployablePackage\ImportISVLicense.zip` — **PowerShell** `$env:LOCALAPPDATA\Microsoft\Dynamics365\RuntimeSymLinks\<env>\PackagesLocalDirectory\bin\CustomDeployablePackage\ImportISVLicense.zip`. You can leave `Scripts/License` in the template empty; the converter overwrites it.
 - **Behaviour:** The converter copies the template into the output directory, then overwrites `HotfixInstallationInfo.xml`, replaces the contents of `AOSService/Packages/files` with the converted modules (`.zip`), and restores license files under `AOSService/Scripts/License`. All other files (exe, DLLs, Scripts .ps1/.psm1, etc.) come from the template unchanged.
 
 Leave the setting empty to keep the current “minimal” LCS output.
@@ -378,7 +412,7 @@ Leave the setting empty to keep the current “minimal” LCS output.
 
 **Round-trip quality:** With the **built-in template** (LcsSkeleton), the round-trip LCS is intentionally minimal: `HotfixInstallationInfo.xml`, modules as `dynamicsax-*.zip` in `Packages/files`, and `Scripts/License`. There is no full Scripts content (exe, DLLs, install scripts) and no `.nupkg` in Packages — the converter does not generate those. If you need a round-trip LCS that matches the original (same Scripts, layout, etc.), set **LCS Template** to a real LCS package (unpacked folder or .zip) that you have from the LCS asset library or your own export.
 
-**Creating a template from your own package (e.g. production):** To use a full LCS package (e.g. AX_AIO_Main_Production_*.zip from the asset library) as the template, first remove license files so the template does not carry production licenses. Use the script `New-LcsTemplateFromPackage.ps1`: it extracts the package, deletes `AOSService/Scripts/License/*`, and optionally removes `Packages/files/*.zip` and `Packages/*.nupkg` so the template is a skeleton only. Example: `.\New-LcsTemplateFromPackage.ps1 -SourceZip "D:\Downloads\MyProduction.zip" -RemovePackagePayload`. Then set **LcsTemplatePath** in Settings to the resulting `*_NoLicenses.zip` (or copy it to `Resources/LcsTemplate/` and point to it).
+**Creating a template from your own package:** To use a full LCS package (e.g. a main/production package from the asset library) as the template, first remove license files so the template does not carry production licenses. Use the script `New-LcsTemplateFromPackage.ps1`: it extracts the package, deletes `AOSService/Scripts/License/*`, and optionally removes `Packages/files/*.zip` and `Packages/*.nupkg` so the template is a skeleton only. Example paths: **PowerShell** `.\New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip" -RemovePackagePayload` — **CMD** `powershell -NoProfile -File New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip" -RemovePackagePayload`. Then set **LcsTemplatePath** in Settings to the resulting `*_NoLicenses.zip` (or copy it to `Resources/LcsTemplate/` and point to it).
 
 ### Data Storage
 
@@ -471,7 +505,7 @@ For **merge** in a pipeline, POST to `/api/packages/merge` with a JSON body cont
 
 ### Deploy via Release Pipeline (Universal Package)
 
-To upload a package to Azure Artifacts (Universal Package) and start an Azure DevOps Release from the portal or from a script, see **[docs/Release-Pipeline-Universal-Package.md](docs/Release-Pipeline-Universal-Package.md)** — setup of the Release artifact (Azure Artifacts / Universal), feed name, script usage, and troubleshooting.
+To upload a package to Azure Artifacts (Universal Package) and start an Azure DevOps Release from the portal or from a script, see **[documents/Release-Pipeline-Universal-Package.md](documents/Release-Pipeline-Universal-Package.md)** — setup of the Release artifact (Azure Artifacts / Universal), feed name, script usage, and troubleshooting.
 
 ## Package Types
 

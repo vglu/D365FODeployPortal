@@ -41,11 +41,11 @@
 - **docs/PLAN_PACKAGE_MODELS_IMPLEMENTATION.md** — Implementation plan; translate table headers and task descriptions (~42 lines).
 - **docs/CONTINUATION_PACKAGE_MODELS.md** — Continuation/status doc; translate (~64 lines).
 
-**Deliverable:** All `docs/` in English.
+**Deliverable:** All documents in English.
 
 ### Phase 3 — Root-level analysis docs (Low priority / optional)
 
-- **PROBLEM_FOUND_SUMMARY.md**, **FINAL_ANALYSIS_WITH_DB_DATA.md**, **ANALYSIS_DEPLOYMENT_ISSUE.md** — Post-mortem / analysis; translate or move to `docs/archive/` and add a short English summary at the top.
+- **PROBLEM_FOUND_SUMMARY.md**, **FINAL_ANALYSIS_WITH_DB_DATA.md**, **ANALYSIS_DEPLOYMENT_ISSUE.md** — Post-mortem / analysis; translate or move to `documents/archive/` and add a short English summary at the top.
 
 **Deliverable:** Either translated or archived with EN summary.
 
@@ -61,7 +61,7 @@
 
 ## 3. Execution Plan
 
-1. **Phase 1** — Translate release notes (v1.5.0, v1.3.0, v1.3.1) and the three user-facing docs in `docs/`.
+1. **Phase 1** — Translate release notes (v1.5.0, v1.3.0, v1.3.1) and the three user-facing docs in `documents/`.
 2. **Phase 2** — Translate TESTING_AND_QUALITY, PLAN_PACKAGE_MODELS_IMPLEMENTATION, CONTINUATION_PACKAGE_MODELS.
 3. **Phase 3** — Translate or archive root analysis docs; add EN summary if archived.
 4. **Phase 4** — Add comment in CredentialParser; fix .ps1 examples/comments.

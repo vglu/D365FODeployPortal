@@ -4,7 +4,7 @@
   (and optionally package payload) so it can be used as a clean skeleton for Unified→LCS conversion.
 
 .DESCRIPTION
-  Use this to turn a production/main package (e.g. AX_AIO_Main_Production_*.zip) into a
+  Use this to turn a production/main LCS package (e.g. a full package from the asset library) into a
   template for DeployPortal's LcsTemplatePath. Licenses are removed from AOSService\Scripts\License.
   Optionally removes Packages\files\*.zip and Packages\*.nupkg to keep only the structure (exe, DLLs, Scripts).
 
@@ -19,8 +19,8 @@
   is a minimal skeleton (converter will add only converted modules). Reduces template size.
 
 .EXAMPLE
-  .\New-LcsTemplateFromPackage.ps1 -SourceZip "D:\Downloads\ф2\AX_AIO_Main_Production_2026.2.4.4 (1).zip"
-  # Creates ...\AX_AIO_Main_Production_2026.2.4.4 (1)_NoLicenses.zip
+  .\New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip"
+  # Creates C:\Packages\MyProduction_NoLicenses.zip
 
 .EXAMPLE
   .\New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip" -OutputZip "C:\DeployPortal\LcsTemplate.zip" -RemovePackagePayload
@@ -56,7 +56,7 @@ try {
     Write-Host "Extracting: $SourceZip" -ForegroundColor Cyan
     Expand-Archive -LiteralPath $SourceZip -DestinationPath $extractDir -Force
 
-    # Resolve LCS root: if zip had one top-level folder (e.g. AX_AIO_...), use it
+    # Resolve LCS root: if zip had one top-level folder (e.g. MyPackage_1.0), use it
     $entries = Get-ChildItem -Path $extractDir -Force
     $dirs = $entries | Where-Object { $_.PSIsContainer }
     $files = $entries | Where-Object { -not $_.PSIsContainer }

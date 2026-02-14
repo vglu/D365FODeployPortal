@@ -23,8 +23,8 @@ But 'pac auth who' output does not contain expected URL.
 The validator only checked for the environment **URL** in the `pac auth who` output. However, for **interactive authentication**, the output does NOT contain the URL (e.g., `cst-hfx-tst-07.crm.dynamics.com`), but instead contains:
 
 ```
-Organization Friendly Name: CST-HFX-TST-07
-Organization Id: ef7d39e4-66d2-f011-8729-000d3a33a003
+Organization Friendly Name: Contoso-Test-01
+Organization Id: <example-org-id>
 ```
 
 **Solution:**
@@ -57,7 +57,7 @@ The validator now passes if **either** method matches.
 ## 📄 Documentation
 
 Updated documentation to reflect the new validation logic:
-- **File:** `docs/TWO_LEVEL_VALIDATION.md`
+- **File:** `TWO_LEVEL_VALIDATION.md`
 - **Section:** CHECK 1: PRE-DEPLOY валидация
 
 ---
@@ -68,7 +68,7 @@ Updated documentation to reflect the new validation logic:
 - `src/DeployPortal/Services/Deployment/Validation/PreDeployAuthValidator.cs` — enhanced validation logic
 - `src/DeployPortal.Tests/Deployment/DeploymentServicesUnitTests.cs` — added/updated tests
 - `src/DeployPortal/DeployPortal.csproj` — version bump to 1.3.1
-- `docs/TWO_LEVEL_VALIDATION.md` — documentation update
+- `TWO_LEVEL_VALIDATION.md` — documentation update
 
 ### Docker Images
 - **Published to Docker Hub:**
@@ -125,6 +125,6 @@ This is a bugfix release. For new features, see [v1.3.0 Release Notes](RELEASE_N
 ## 📞 Support
 
 If you encounter any issues, please:
-1. Check the [documentation](docs/)
+1. Check the [documentation](.)
 2. Review logs in `C:\Temp\DeployPortal\logs` (Windows) or `/tmp/DeployPortal/logs` (Docker)
 3. Contact support: [vhlu@sims-service.com](mailto:vhlu@sims-service.com) — [Sims Tech](https://sims-service.com/)

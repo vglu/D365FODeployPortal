@@ -1,3 +1,5 @@
-# Path: folder "ф2" (Cyrillic) — use Unicode to avoid encoding issues
-$src = "D:\Downloads\$([char]0x0444)2\AX_AIO_Main_Production_2026.2.4.4 (1).zip"
+# Example: run New-LcsTemplateFromPackage.ps1 with a source package path.
+# CMD:  set SRC=C:\Packages\MyProduction.zip && powershell -NoProfile -File "%~dp0run-template-from-package.ps1"
+# PowerShell: $env:SRC = "C:\Packages\MyProduction.zip"; .\run-template-from-package.ps1
+$src = if ($env:SRC) { $env:SRC } else { "C:\Packages\MyProduction.zip" }
 & "$PSScriptRoot\New-LcsTemplateFromPackage.ps1" -SourceZip $src -RemovePackagePayload:$true

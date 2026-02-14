@@ -7,7 +7,7 @@
 
 .PARAMETER PackageName
   If not specified and DB is available, uses the latest package name from the database.
-  Example: AXDeployablePackagePCM_2026.2.11.1
+  Example: MyDeployablePackage_1.0.0.0
 
 .PARAMETER Version
   Version for the universal package. Default: 1.0.<UnixTimestamp>
@@ -184,13 +184,13 @@ if (-not $PackagePath -or -not (Test-Path -LiteralPath $PackagePath)) {
     }
     Write-Host ""
     Write-Host "Example (replace with your .zip path and run from repo root):" -ForegroundColor Yellow
-    Write-Host "  .\scripts\upload-universal-package-from-portal.ps1 -PackagePath 'C:\DeployPortal\Packages\your-package.zip' -PackageName 'AXDeployablePackagePCM_2026.2.11.1' -Version '1.0.1770920439'"
+    Write-Host "  .\scripts\upload-universal-package-from-portal.ps1 -PackagePath 'C:\Packages\your-package.zip' -PackageName 'MyDeployablePackage_1.0.0.0' -Version '1.0.1770920439'"
     exit 1
 }
 
-# Defaults as in Deploy dialog screenshot (PPackages, AXDeployablePackagePCM_2026.2.11.1, 1.0.1770920439)
+# Defaults as in Deploy dialog screenshot (PPackages, MyDeployablePackage_1.0.0.0, 1.0.1770920439)
 if (-not $PackageName) {
-    $PackageName = "AXDeployablePackagePCM_2026.2.11.1"
+    $PackageName = "MyDeployablePackage_1.0.0.0"
 }
 if (-not $Version) {
     $Version = "1.0.1770920439"
@@ -367,7 +367,7 @@ try {
         Write-Host ""
         Write-Host "Release pipeline was not started. To create a release after upload, run with:" -ForegroundColor Cyan
         Write-Host "  -DefinitionId <release-definition-id> -ArtifactAlias <alias> -Pat <token>" -ForegroundColor Cyan
-        Write-Host "See docs/Release-Pipeline-Universal-Package.md for how to get DefinitionId and alias." -ForegroundColor Gray
+        Write-Host "See documents/Release-Pipeline-Universal-Package.md for how to get DefinitionId and alias." -ForegroundColor Gray
     }
 }
 finally {

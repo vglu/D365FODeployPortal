@@ -56,7 +56,7 @@
 - **OCP**: Валидаторы реализуют `IDeploymentValidator`, добавление новых проверок без изменения оркестратора.  
 - **DIP/ISP**: Интерфейсы `IDeployService`, `IPacAuthService`, `IPacDeploymentService`, `IPacCliExecutor`, `IIsolatedDirectoryManager`, `IDeploymentValidator` — всё мокается в тестах.
 
-Подробно: `docs/SOLID_REFACTORING_PLAN.md`, `docs/SOLID_REFACTORING_COMPLETE.md`.
+Подробно: `SOLID_REFACTORING_PLAN.md`, `SOLID_REFACTORING_COMPLETE.md`.
 
 ### Что можно довести до «максимально возможного»
 

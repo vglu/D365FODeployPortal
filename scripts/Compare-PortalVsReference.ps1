@@ -3,14 +3,14 @@
 #   .\Compare-PortalVsReference.ps1 -BaseUrl "http://localhost:5137" -Label "Portal"
 #   .\Compare-PortalVsReference.ps1 -BaseUrl "http://localhost:5000" -Label "Container"
 #
-# Expects: D:\Downloads\SCT\1046703\exp\*.zip (3 LCS), D:\Downloads\SCT\1046703\exp\Joined\P2.zip, D:\Downloads\SCT\1046703\exp\Joined\P2 (folder)
-# Output: tables and saved files in D:\Downloads\SCT\1046703\exp\Compare\{Label}\
+# Expects: {ExpRoot}\PackageA.zip, PackageB.zip, PackageC.zip (3 LCS), {ExpRoot}\Joined\P2.zip, {ExpRoot}\Joined\P2 (folder)
+# Output: tables and saved files in {OutRoot}\{Label}\
 
 param(
     [string]$BaseUrl = "http://localhost:5137",
     [string]$Label = "Portal",
-    [string]$ExpRoot = "D:\Downloads\SCT\1046703\exp",
-    [string]$OutRoot = "D:\Downloads\SCT\1046703\exp\Compare"
+    [string]$ExpRoot = "C:\TestData\exp",
+    [string]$OutRoot = "C:\TestData\exp\Compare"
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,9 +49,9 @@ Write-Host ""
 
 # Upload three packages
 $zips = @(
-    (Join-Path $expPath "AXDeployablePackageAFSPM_2026.2.11.1.zip"),
-    (Join-Path $expPath "AXDeployablePackageAL_2026.2.11.1.zip"),
-    (Join-Path $expPath "AXDeployablePackagePCM_2026.2.11.1.zip")
+    (Join-Path $expPath "PackageA.zip"),
+    (Join-Path $expPath "PackageB.zip"),
+    (Join-Path $expPath "PackageC.zip")
 )
 foreach ($z in $zips) {
     if (-not (Test-Path $z)) { Write-Error "Missing: $z" }

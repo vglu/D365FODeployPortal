@@ -508,7 +508,7 @@ if ($Mode -eq "Development") {
     Write-Host "    2. Open:   http://localhost:5000" -ForegroundColor White
     Write-Host "    3. Setup:  Go to Settings and configure paths" -ForegroundColor White
     Write-Host "    4. Auth:   Run Setup-ServicePrincipal.ps1 or" -ForegroundColor White
-    Write-Host "               follow Setup-ServicePrincipal-Manual.md" -ForegroundColor White
+    Write-Host "               follow documents/Setup-ServicePrincipal-Manual.md" -ForegroundColor White
 }
 
 Write-Host ""

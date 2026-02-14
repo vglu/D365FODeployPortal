@@ -30,7 +30,7 @@ Enhanced the package deletion flow with **proactive validation** and **informati
   ║ deployments across these          ║
   ║ environments:                     ║
   ║                                   ║
-  ║ CST-HFX-TST-07, Prod-Env, UAT-01  ║
+  ║ Contoso-Test-01, Prod-Env, UAT-01  ║
   ║                                   ║
   ║ You must delete all related       ║
   ║ deployments before you can        ║
@@ -168,6 +168,6 @@ This is a UX improvement release. For previous changes, see:
 ## 📞 Support
 
 If you encounter any issues, please:
-1. Check the [documentation](docs/)
+1. Check the [documentation](.)
 2. Review logs in `C:\Temp\DeployPortal\logs` (Windows) or `/tmp/DeployPortal/logs` (Docker)
 3. Contact support: [vhlu@sims-service.com](mailto:vhlu@sims-service.com) — [Sims Tech](https://sims-service.com/)

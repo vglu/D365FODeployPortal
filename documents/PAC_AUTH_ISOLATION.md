@@ -99,7 +99,7 @@ await deployService.DeployPackageAsync(
 6. Удаляет папку
 ```
 
-### Deployment #2 (параллельно на CST-HFX-TST-05):
+### Deployment #2 (параллельно на Contoso-Test-02):
 ```
 1. Создаёт: C:\Temp\DeployPortal\pac_auth_2_x9y8z7w6v5u4...
 2. Запускает: pac auth create --applicationId yyy --environment cst-hfx-tst-05.crm.dynamics.com

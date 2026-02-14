@@ -111,7 +111,7 @@ Each deployment uses its own auth profile. No global state.
 You can deploy to multiple environments at once without conflicts:
 ```
 Deployment #1 → Cst-hfx-tst-07 (parallel)
-Deployment #2 → CST-HFX-TST-05 (parallel)
+Deployment #2 → Contoso-Test-02 (parallel)
 Deployment #3 → Infra-tst-01 (parallel)
 ```
 
@@ -230,7 +230,7 @@ Run two deployments at the same time to different environments and confirm both 
 ## Documentation
 
 Full documentation is in:
-- `docs/PAC_AUTH_ISOLATION.md` — technical description of the solution
+- `PAC_AUTH_ISOLATION.md` — technical description of the solution
 
 ---
 

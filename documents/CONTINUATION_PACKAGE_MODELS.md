@@ -96,7 +96,7 @@
    ```bash
    dotnet build -c Release
    ```
-3. Открыть этот файл: **`docs/CONTINUATION_PACKAGE_MODELS.md`**.
+3. Открыть этот файл: **`CONTINUATION_PACKAGE_MODELS.md`**.
 4. Начать с приоритета 1 (реализация методов в `PackageModificationService`), затем UI, затем тесты.
 
 ---
