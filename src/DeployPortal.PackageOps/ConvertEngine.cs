@@ -58,7 +58,7 @@ public class ConvertEngine
             onLog?.Invoke("[Built-in] Extracting LCS package...");
             ZipFile.ExtractToDirectory(lcsPackagePath, tempDir);
 
-            // Many LCS ZIPs have a single root folder (e.g. AX_AIO_Main_Production_2026.2.4.4/AOSService/...).
+            // Many LCS ZIPs have a single root folder (e.g. MyPackage_1.0/AOSService/...).
             // Resolve the effective root so we find HotfixInstallationInfo.xml and AOSService in both flat and nested layouts.
             var extractRoot = ResolveExtractRoot(tempDir);
             string? lcsRootFolderName = null;
@@ -517,7 +517,7 @@ public class ConvertEngine
 
     /// <summary>
     /// If the directory has exactly one child directory (and no files at root), return that child.
-    /// This handles LCS ZIPs that have a single root folder (e.g. AX_AIO_.../AOSService/...).
+    /// This handles LCS ZIPs that have a single root folder (e.g. MyPackage_1.0/AOSService/...).
     /// </summary>
     private static string ResolveExtractRoot(string tempDir)
     {

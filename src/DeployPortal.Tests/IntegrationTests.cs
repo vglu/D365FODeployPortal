@@ -432,7 +432,7 @@ Environments (FAIL):     ";
         Assert.That(Directory.Exists(templateDir), Is.True, "UnifiedTemplate must exist (build DeployPortal first)");
 
         // LCS zip with single root folder: NestedRoot/AOSService/Packages/files/dynamicsax-ModuleA.1.0.0.0.zip
-        var nestedRoot = "AX_AIO_Main_Production_2026.2.4.4";
+        var nestedRoot = "MyLcsPackage_1.0.0.0";
         var lcsPath = CreateNestedLcsPackage(nestedRoot);
         var tempDir = Path.Combine(_testDir, "convert_work");
         Directory.CreateDirectory(tempDir);
@@ -585,13 +585,13 @@ Environments (FAIL):     ";
     // =====================================================
 
     [Test]
-    [Explicit("Requires reference paths: set DeployPortal_TestLcsPackagePath and DeployPortal_TestUnifiedReferencePath, or use defaults under D:\\Downloads\\SCT\\1046703\\exp\\Joined")]
+    [Explicit("Requires reference paths: set DeployPortal_TestLcsPackagePath and DeployPortal_TestUnifiedReferencePath, or use defaults under C:\\TestData\\Joined")]
     public void LcsApplySimulation_ConvertToUnified_MatchesReferenceP2()
     {
         var lcsPath = System.Environment.GetEnvironmentVariable("DeployPortal_TestLcsPackagePath")
-            ?? @"D:\Downloads\SCT\1046703\exp\Joined\P2.zip";
+            ?? @"C:\TestData\Joined\P2.zip";
         var referenceUnifiedDir = System.Environment.GetEnvironmentVariable("DeployPortal_TestUnifiedReferencePath")
-            ?? @"D:\Downloads\SCT\1046703\exp\Joined\P2";
+            ?? @"C:\TestData\Joined\P2";
 
         if (!File.Exists(lcsPath))
         {

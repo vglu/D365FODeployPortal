@@ -282,10 +282,10 @@ Current version `1.49.4` is the latest targeting .NET 9 (PAC CLI 2.x requires .N
 
 ## Related Documentation
 
-- `docs/TWO_LEVEL_VALIDATION.md` — detailed description of both checks
-- `docs/SOLUTION_IMPLEMENTED.md` — PAC auth isolation implementation
-- `docs/README_DEPLOYMENT_FIX.md` — short summary
-- `docs/PAC_AUTH_ISOLATION.md` — technical isolation description
+- `TWO_LEVEL_VALIDATION.md` — detailed description of both checks
+- `SOLUTION_IMPLEMENTED.md` — PAC auth isolation implementation
+- `README_DEPLOYMENT_FIX.md` — short summary
+- `PAC_AUTH_ISOLATION.md` — technical isolation description
 
 ---
 

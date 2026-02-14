@@ -65,7 +65,7 @@ if ($LASTEXITCODE -ne 0) {
 # Copy helper files (including prerequisites script so it can be run from publish folder)
 $helperFiles = @(
     "Setup-ServicePrincipal.ps1",
-    "Setup-ServicePrincipal-Manual.md",
+    "documents/Setup-ServicePrincipal-Manual.md",
     "check-prerequisites.ps1"
 )
 
@@ -91,7 +91,7 @@ DeployPortal.exe --urls "http://localhost:5000"
 $startCmd | Out-File (Join-Path $OutputDir "start.cmd") -Encoding ASCII
 
 # Copy README for distribution
-$readmeSrc = Join-Path $PSScriptRoot "publish-README.md"
+$readmeSrc = Join-Path $PSScriptRoot "documents/publish-README.md"
 if (Test-Path $readmeSrc) {
     Copy-Item $readmeSrc (Join-Path $OutputDir "README.md")
     Write-Host 'Copied: README.md' -ForegroundColor Green

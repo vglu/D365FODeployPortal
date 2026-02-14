@@ -15,7 +15,7 @@
 $Organization = "YOUR_ORG"           # e.g. sisn or myorg
 $Project      = "YOUR_PROJECT"       # e.g. "SIS D365FO Products"
 $Feed         = "Packages"
-$PackageName  = "AXDeployablePackagePCM_202"
+$PackageName  = "MyDeployablePackage_"
 $Version      = "1.0.1770918742"
 $PackagePath  = "C:\path\to\your\package.zip"   # .zip file or folder to publish
 # ================================

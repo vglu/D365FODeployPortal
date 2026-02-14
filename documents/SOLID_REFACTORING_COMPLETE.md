@@ -242,10 +242,10 @@ Still in place (CHECK 1 + CHECK 2) via validators.
 
 ## Documentation
 
-- `docs/SOLID_REFACTORING_PLAN.md` — refactoring plan and SOLID analysis
-- `docs/TWO_LEVEL_VALIDATION.md` — validation details
-- `docs/DOCKER_COMPATIBILITY.md` — container compatibility
-- `docs/README_DEPLOYMENT_FIX.md` — short summary
+- `SOLID_REFACTORING_PLAN.md` — refactoring plan and SOLID analysis
+- `TWO_LEVEL_VALIDATION.md` — validation details
+- `DOCKER_COMPATIBILITY.md` — container compatibility
+- `README_DEPLOYMENT_FIX.md` — short summary
 
 ---
 

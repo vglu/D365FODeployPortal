@@ -173,7 +173,7 @@ This is a feature release. For previous changes, see:
 ## 📞 Support
 
 If you encounter any issues, please:
-1. Check the [documentation](docs/)
+1. Check the [documentation](.)
 2. Review logs in `C:\Temp\DeployPortal\logs` (Windows) or `/tmp/DeployPortal/logs` (Docker)
 3. Contact support: [vhlu@sims-service.com](mailto:vhlu@sims-service.com) — [Sims Tech](https://sims-service.com/)
 

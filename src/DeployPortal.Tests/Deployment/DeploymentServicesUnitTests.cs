@@ -129,7 +129,7 @@ public class DeploymentServicesUnitTests
         {
             Environment = new Models.Environment 
             { 
-                Name = "CST-HFX-TST-07", 
+                Name = "Contoso-Test-01", 
                 Url = "cst-hfx-tst-07.crm.dynamics.com" 
             },
             IsolatedAuthDir = _testDir,
@@ -139,7 +139,7 @@ public class DeploymentServicesUnitTests
             PacAuthWhoOutput = @"Connected as user@example.com
 Type: User
 Organization Id: ef7d39e4-66d2-f011-8729-000d3a33a003
-Organization Friendly Name: CST-HFX-TST-07"
+Organization Friendly Name: Contoso-Test-01"
         };
 
         // Act & Assert

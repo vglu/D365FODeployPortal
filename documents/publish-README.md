@@ -2,7 +2,10 @@
 
 ## Quick Start
 
-1. Run start.cmd — opens browser automatically
+1. Run the app:
+   - **CMD:** `start.cmd` or `DeployPortal.exe --urls "http://localhost:5000"`
+   - **PowerShell:** `.\start.cmd` or `.\DeployPortal.exe --urls "http://localhost:5000"`
+   (start.cmd opens the browser automatically.)
 2. Go to **Settings** — configure paths to ModelUtil.exe and PAC CLI
 3. Go to **Environments** — add target Power Platform environments
 4. Go to **Packages** — upload packages (LCS, Unified, or Other)
@@ -15,7 +18,7 @@
 | .NET Runtime    | No        | Bundled (self-contained publish)                         |
 | ModelUtil.exe   | For LCS conversion | Installed with D365FO dev tools              |
 | PAC CLI         | For deployment | dotnet tool install --global Microsoft.PowerApps.CLI.Tool |
-| Azure SP        | For deployment | Run Setup-ServicePrincipal.ps1 or follow Manual.md |
+| Azure SP        | For deployment | **PowerShell:** `.\Setup-ServicePrincipal.ps1` — **CMD:** `powershell -NoProfile -File Setup-ServicePrincipal.ps1` — or follow Manual.md |
 
 ## Configuration
 
@@ -27,5 +30,11 @@
 ## Ports
 
 Default: http://localhost:5000
-To change: DeployPortal.exe --urls "http://localhost:8080"
-To allow remote access: DeployPortal.exe --urls "http://0.0.0.0:5000"
+
+**Change port:**  
+CMD: `DeployPortal.exe --urls "http://localhost:8080"`  
+PowerShell: `.\DeployPortal.exe --urls "http://localhost:8080"`
+
+**Remote access:**  
+CMD: `DeployPortal.exe --urls "http://0.0.0.0:5000"`  
+PowerShell: `.\DeployPortal.exe --urls "http://0.0.0.0:5000"`
