@@ -41,10 +41,6 @@
         </MudStack>
         <MudText Typo="Typo.body2" Class="mt-2 mud-text-secondary">or drag and drop .zip files here</MudText>
     </div>
-    <MudTextField @bind-Value="_uploadDevOpsUrl" Label="Azure DevOps Task URL (optional)"
-                  Placeholder="https://dev.azure.com/org/project/_workitems/edit/12345"
-                  Variant="Variant.Text" Margin="Margin.Dense" Class="mt-2"
-                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Link" />
     @if (_uploading)
     {
         <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="mt-2" />
@@ -57,13 +53,16 @@
     }
 </MudPaper>
 
-@* Package table *@
-<MudTable @ref="_table" Items="@_packages" Dense="true" Hover="true" Elevation="2" Loading="@_loading"
+@* Package tabs: Active | Archive (like Deployments) *@
+<MudTabs Elevation="2" Rounded="true" Color="Color.Primary" @bind-ActivePanelIndex="_packagesTabIndex" Class="mb-4">
+    <MudTabPanel Text="Active Packages" Icon="@Icons.Material.Filled.Inventory2">
+@* Active package table *@
+<MudTable @ref="_table" Items="@_packages" Dense="true" Hover="true" Elevation="0" Loading="@_loading"
           MultiSelection="true" @bind-SelectedItems="_selectedForMerge" SelectOnRowClick="false"
           Filter="new Func<Package, bool>(FilterFunc)" FixedHeader="true"
           Breakpoint="Breakpoint.None">
     <ToolBarContent>
-        <MudText Typo="Typo.h6">Packages</MudText>
+        <MudText Typo="Typo.h6">Active Packages</MudText>
         @if (_selectedForMerge.Count >= 2)
         {
             <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
@@ -92,9 +91,6 @@
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.PackageType)">Type</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.FileSizeBytes)">Size</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.UploadedAt)" InitialDirection="SortDirection.Descending">Uploaded</MudTableSortLabel></MudTh>
-        <MudTh Style="width:44px">
-            <MudTooltip Text="DevOps Task"><MudIcon Icon="@Icons.Material.Filled.Link" Size="Size.Small" /></MudTooltip>
-        </MudTh>
         <MudTh Style="width:44px">
             <MudTooltip Text="License Files"><MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" /></MudTooltip>
         </MudTh>
@@ -128,15 +124,6 @@
             </MudTooltip>
         </MudTd>
         <MudTd Style="text-align:center">
-            @if (!string.IsNullOrEmpty(context.DevOpsTaskUrl))
-            {
-                <MudTooltip Text="@context.DevOpsTaskUrl">
-                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" Color="Color.Info"
-                                   Href="@context.DevOpsTaskUrl" Target="_blank" />
-                </MudTooltip>
-            }
-        </MudTd>
-        <MudTd Style="text-align:center">
             @if (HasLicenseFiles(context))
             {
                 <MudTooltip Text="@GetLicenseTooltip(context)">
@@ -154,6 +141,11 @@
                 @* Actions menu *@
                 <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small"
                          AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+                    <MudMenuItem Icon="@Icons.Material.Filled.FolderOpen"
+                                 Href="@($"/packages/{context.Id}/details")">
+                        Manage content
+                    </MudMenuItem>
+                    <MudDivider />
                     @if (context.PackageType == "LCS" || context.PackageType == "Merged")
                     {
                         <MudMenuItem Icon="@Icons.Material.Filled.Transform"
@@ -212,9 +204,13 @@
                         Refresh license info
                     </MudMenuItem>
                     <MudDivider />
-                    <MudMenuItem Icon="@Icons.Material.Filled.Link"
-                                 OnClick="@(() => EditDevOpsUrl(context))">
-                        Edit DevOps URL
+                    <MudMenuItem Icon="@Icons.Material.Filled.Edit"
+                                 OnClick="@(() => OpenEditPackage(context))">
+                        Edit
+                    </MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Archive"
+                                 OnClick="@(() => ArchivePackage(context))">
+                        Archive
                     </MudMenuItem>
                     <MudDivider />
                     <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error"
@@ -229,7 +225,7 @@
         @if (!string.IsNullOrEmpty(context.MergeSourceNames) && _expandedRows.Contains(context.Id))
         {
             <MudTr>
-                <td colspan="9" style="padding:0">
+                <td colspan="8" style="padding:0">
                     <MudPaper Class="pa-3 ma-2" Elevation="0"
                               Style="background:var(--mud-palette-background-gray)">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
@@ -259,9 +255,60 @@
         }
     </ChildRowContent>
     <NoRecordsContent>
-        <MudText Color="Color.Warning" Class="pa-4">No packages uploaded yet.</MudText>
+        <MudText Color="Color.Warning" Class="pa-4">No active packages. Upload or restore from Archive.</MudText>
     </NoRecordsContent>
 </MudTable>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Archive" Icon="@Icons.Material.Filled.Archive">
+        <MudTable Items="@_archivedPackages" Dense="true" Hover="true" Elevation="0" Loading="@_loadingArchive" FixedHeader="true" Class="mt-4">
+            <ToolBarContent>
+                <MudText Typo="Typo.h6">Archived Packages</MudText>
+                <MudSpacer />
+            </ToolBarContent>
+            <HeaderContent>
+                <MudTh>Name</MudTh>
+                <MudTh>File</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Size</MudTh>
+                <MudTh>Uploaded</MudTh>
+                <MudTh>Archived</MudTh>
+                <MudTh Style="width:120px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Name">@context.Name</MudTd>
+                <MudTd DataLabel="File"><span class="mud-text-secondary" style="font-size:0.85rem">@context.OriginalFileName</span></MudTd>
+                <MudTd DataLabel="Type">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@PkgTypeColor(context.PackageType)">@context.PackageType</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Size">@FormatSize(context.FileSizeBytes)</MudTd>
+                <MudTd DataLabel="Uploaded">@context.UploadedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudTd>
+                <MudTd DataLabel="Archived">@(context.ArchivedAt?.ToLocalTime().ToString("MM-dd HH:mm") ?? "-")</MudTd>
+                <MudTd DataLabel="Actions">
+                    <MudTooltip Text="Download">
+                        <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Primary"
+                                       OnClick="@(() => DownloadPackage(context))" />
+                    </MudTooltip>
+                    <MudTooltip Text="Manage content">
+                        <MudIconButton Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small"
+                                       Href="@($"/packages/{context.Id}/details")" Target="_self" />
+                    </MudTooltip>
+                    <MudTooltip Text="Restore">
+                        <MudIconButton Icon="@Icons.Material.Filled.Unarchive" Size="Size.Small" Color="Color.Success"
+                                       OnClick="@(() => RestorePackage(context))" />
+                    </MudTooltip>
+                    <MudTooltip Text="Delete permanently">
+                        <MudIconButton Icon="@Icons.Material.Filled.DeleteForever" Size="Size.Small" Color="Color.Error"
+                                       OnClick="@(() => DeletePackagePermanently(context))" />
+                    </MudTooltip>
+                </MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText Color="Color.Default" Class="pa-4">No archived packages.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    </MudTabPanel>
+</MudTabs>
 
 @* Merge name dialog *@
 <MudDialog @bind-Visible="_mergeDialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
@@ -333,25 +380,24 @@
     </DialogActions>
 </MudDialog>
 
-@* DevOps URL edit dialog *@
-<MudDialog @bind-Visible="_devOpsDialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+@* Edit package dialog (Name + URL) *@
+<MudDialog @bind-Visible="_editPackageDialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudIcon Icon="@Icons.Material.Filled.Link" Color="Color.Info" />
-            <MudText Typo="Typo.h6">Edit DevOps Task URL</MudText>
+            <MudIcon Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" />
+            <MudText Typo="Typo.h6">Edit Package</MudText>
         </MudStack>
     </TitleContent>
     <DialogContent>
-        <MudTextField @bind-Value="_devOpsDialogUrl" Label="Azure DevOps Task URL"
+        <MudTextField @bind-Value="_editPackageName" Label="Package name" Variant="Variant.Outlined" Immediate="true" Class="mt-2" />
+        <MudTextField @bind-Value="_editPackageUrl" Label="URL (e.g. DevOps task link)" Variant="Variant.Outlined" Immediate="true" Class="mt-2"
                       Placeholder="https://dev.azure.com/org/project/_workitems/edit/12345"
-                      Variant="Variant.Outlined" Immediate="true" Class="mt-2"
-                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Link"
-                      Clearable="true" />
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Link" Clearable="true" />
     </DialogContent>
     <DialogActions>
-        <MudButton OnClick="@(() => _devOpsDialogVisible = false)">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@SaveDevOpsUrl"
-                   StartIcon="@Icons.Material.Filled.Save">
+        <MudButton OnClick="@(() => _editPackageDialogVisible = false)">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@SaveEditPackage"
+                   StartIcon="@Icons.Material.Filled.Save" Disabled="@string.IsNullOrWhiteSpace(_editPackageName)">
             Save
         </MudButton>
     </DialogActions>
@@ -564,7 +610,9 @@
     private string _searchText = "";
     private string _uploadType = "Auto";
     private string _lastDetectedType = "";
-    private string _uploadDevOpsUrl = "";
+    private int _packagesTabIndex = 0;
+    private List<Package> _archivedPackages = new();
+    private bool _loadingArchive = true;
     private IJSObjectReference? _dropZoneJs;
     private DotNetObjectReference<Packages>? _dotNetRef;
 
@@ -885,7 +933,11 @@
             await _fileUpload.OpenFilePickerAsync();
     }
 
-    protected override async Task OnInitializedAsync() => await LoadData();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+        await LoadArchivedData();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -950,7 +1002,6 @@
         _uploading = true;
         _lastDetectedType = "";
         string? typeOverride = _uploadType == "Auto" ? null : _uploadType;
-        string? devOpsUrl = string.IsNullOrWhiteSpace(_uploadDevOpsUrl) ? null : _uploadDevOpsUrl;
         var total = zipFiles.Count;
         var done = 0;
         var failed = 0;
@@ -964,7 +1015,7 @@
                 try
                 {
                     await using var stream = file.OpenReadStream(maxAllowedSize: 2L * 1024 * 1024 * 1024);
-                    var pkg = await PkgService.UploadAsync(file.Name, stream, typeOverride, devOpsUrl);
+                    var pkg = await PkgService.UploadAsync(file.Name, stream, typeOverride, devOpsTaskUrl: null);
                     if (_uploadType == "Auto" && string.IsNullOrEmpty(_lastDetectedType))
                         _lastDetectedType = pkg.PackageType;
                     done++;
@@ -974,7 +1025,6 @@
                     failed++;
                     Snackbar.Add($"'{file.Name}': {ex.Message}", Severity.Error);
                 }
-                devOpsUrl = null; // use URL only for first file
             }
             if (done > 0)
             {
@@ -986,7 +1036,6 @@
         {
             _uploading = false;
             _uploadProgress = "";
-            _uploadDevOpsUrl = "";
             StateHasChanged();
         }
     }
@@ -995,7 +1044,14 @@
     public void SetDropZoneActive(bool active) { _dropZoneActive = active; StateHasChanged(); }
 
     [JSInvokable]
-    public object GetUploadOptions() => new { packageType = _uploadType ?? "Auto", devOpsTaskUrl = _uploadDevOpsUrl ?? "" };
+    public object GetUploadOptions() => new { packageType = _uploadType ?? "Auto" };
+
+    private async Task LoadArchivedData()
+    {
+        _loadingArchive = true;
+        _archivedPackages = await PkgService.GetArchivedAsync();
+        _loadingArchive = false;
+    }
 
     [JSInvokable]
     public async Task OnDropZoneUploadComplete(int successCount, int failCount)
@@ -1128,24 +1184,64 @@
         Console.WriteLine(msg);
     }
 
-    // ===== Edit DevOps URL =====
-    private bool _devOpsDialogVisible;
-    private string _devOpsDialogUrl = "";
-    private int _devOpsDialogPkgId;
+    // ===== Edit Package =====
+    private bool _editPackageDialogVisible;
+    private string _editPackageName = "";
+    private string _editPackageUrl = "";
+    private int _editPackageId;
 
-    private void EditDevOpsUrl(Package pkg)
+    private void OpenEditPackage(Package pkg)
     {
-        _devOpsDialogPkgId = pkg.Id;
-        _devOpsDialogUrl = pkg.DevOpsTaskUrl ?? "";
-        _devOpsDialogVisible = true;
+        _editPackageId = pkg.Id;
+        _editPackageName = pkg.Name ?? "";
+        _editPackageUrl = pkg.DevOpsTaskUrl ?? "";
+        _editPackageDialogVisible = true;
     }
 
-    private async Task SaveDevOpsUrl()
+    private async Task SaveEditPackage()
     {
-        await PkgService.UpdateDevOpsUrlAsync(_devOpsDialogPkgId, _devOpsDialogUrl);
-        _devOpsDialogVisible = false;
-        Snackbar.Add("DevOps URL updated.", Severity.Success);
+        if (string.IsNullOrWhiteSpace(_editPackageName)) return;
+        await PkgService.UpdatePackageAsync(_editPackageId, _editPackageName.Trim(), _editPackageUrl);
+        _editPackageDialogVisible = false;
+        Snackbar.Add("Package updated.", Severity.Success);
         await LoadData();
+        if (_packagesTabIndex == 1) await LoadArchivedData();
+    }
+
+    // ===== Archive / Restore =====
+    private async Task ArchivePackage(Package pkg)
+    {
+        var ok = await DialogService.ShowMessageBox("Archive package", $"Archive '{pkg.Name}'? It will move to the Archive tab.", yesText: "Archive", cancelText: "Cancel");
+        if (ok != true) return;
+        await PkgService.ArchiveAsync(pkg.Id);
+        Snackbar.Add($"'{pkg.Name}' archived.", Severity.Success);
+        await LoadData();
+        await LoadArchivedData();
+    }
+
+    private async Task RestorePackage(Package pkg)
+    {
+        await PkgService.RestoreAsync(pkg.Id);
+        Snackbar.Add($"'{pkg.Name}' restored to active.", Severity.Success);
+        _packagesTabIndex = 0;
+        await LoadData();
+        await LoadArchivedData();
+    }
+
+    private async Task DeletePackagePermanently(Package pkg)
+    {
+        var ok = await DialogService.ShowMessageBox("Delete permanently", $"Permanently delete '{pkg.Name}'? This cannot be undone.", yesText: "Delete", cancelText: "Cancel");
+        if (ok != true) return;
+        try
+        {
+            await PkgService.DeleteAsync(pkg.Id);
+            Snackbar.Add("Package deleted.", Severity.Success);
+            await LoadArchivedData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     // ===== License Files =====

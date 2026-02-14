@@ -34,6 +34,12 @@ public class ModelInfo
     /// List of dependencies (other models this model depends on).
     /// </summary>
     public List<string> Dependencies { get; set; } = new();
+
+    /// <summary>
+    /// For Unified packages: this model's *_managed.zip contains the license folder (_License_*).
+    /// For LCS/Merged: always false (licenses are in AOSService/Scripts/License).
+    /// </summary>
+    public bool ContainsLicenses { get; set; }
 }
 
 /// <summary>

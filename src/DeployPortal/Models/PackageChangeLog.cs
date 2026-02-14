@@ -72,5 +72,10 @@ public enum PackageChangeType
     /// <summary>
     /// A model or license was removed from the package.
     /// </summary>
-    Removed = 2
+    Removed = 2,
+
+    /// <summary>
+    /// Package metadata was updated (name, ticket URL, etc.).
+    /// </summary>
+    Updated = 3
 }

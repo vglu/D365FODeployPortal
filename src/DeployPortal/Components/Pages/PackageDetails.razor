@@ -1,0 +1,377 @@
+@page "/packages/{Id:int}/details"
+@inject PackageService PkgService
+@inject DeployPortal.Services.PackageContent.IPackageContentService ContentService
+@inject DeployPortal.Services.PackageContent.IPackageModificationService ModificationService
+@inject DeployPortal.Services.PackageContent.IPackageChangeLogService ChangeLogService
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject ILogger<PackageDetails> Logger
+
+<PageTitle>Package: @(_package?.Name ?? "…")</PageTitle>
+
+@if (_package == null && !_loading)
+{
+    <MudAlert Severity="Severity.Warning">Package not found.</MudAlert>
+    <MudButton Variant="Variant.Text" Href="/packages">Back to Packages</MudButton>
+    return;
+}
+
+<MudStack Spacing="3">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/packages" />
+            <MudText Typo="Typo.h4">@_package?.Name</MudText>
+            <MudChip T="string" Size="Size.Small">@_package?.PackageType</MudChip>
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary">
+                Format: @PackageFormatLabel(_package?.PackageType)
+            </MudChip>
+        </MudStack>
+    </MudStack>
+
+    <MudTabs Elevation="2" Rounded="true" Color="Color.Primary" @bind-ActivePanelIndex="_activeTab">
+        <MudTabPanel Text="Models" Icon="@Icons.Material.Filled.Apps">
+            <MudStack Spacing="2" Class="mt-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.subtitle1">D365FO models in this package</MudText>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenAddModelDialog" Disabled="@(_addingModel)">
+                        Add model
+                    </MudButton>
+                </MudStack>
+                <MudTable Items="@_modelRows" Dense="true" Hover="true" Loading="@_loadingModels">
+                    <HeaderContent>
+                        <MudTh>Model</MudTh>
+                        <MudTh>Unpkg</MudTh>
+                        <MudTh>File</MudTh>
+                        <MudTh>Version</MudTh>
+                        <MudTh>Size</MudTh>
+                        <MudTh Style="width:100px">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <span>@context.Name</span>
+                                @if (context.HasLicenses)
+                                {
+                                    <MudTooltip Text="Contains license files (Unified package)">
+                                        <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Gavel" Color="Color.Secondary" Variant="Variant.Outlined">
+                                            Licenses
+                                        </MudChip>
+                                    </MudTooltip>
+                                }
+                            </MudStack>
+                        </MudTd>
+                        <MudTd>@(context.NupkgFileName ?? "-")</MudTd>
+                        <MudTd>@(context.ZipFileName ?? "-")</MudTd>
+                        <MudTd>@(context.Version ?? "-")</MudTd>
+                        <MudTd>@FormatSize(context.SizeBytes)</MudTd>
+                        <MudTd>
+                            @if (context.DownloadFileName != null)
+                            {
+                                <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
+                                                Href="@GetModelDownloadUrl(context.DownloadFileName)" Target="_blank" title="Download (zip)" />
+                            }
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                            OnClick="@(async () => await RemoveModelByRow(context))" title="Remove model" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudStack>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Licenses" Icon="@Icons.Material.Filled.Gavel">
+            <MudStack Spacing="2" Class="mt-4">
+                <MudStack Row="true" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.subtitle1">License files in this package</MudText>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add"
+                               OnClick="OpenAddLicenseDialog" Disabled="@(_addingLicense)">
+                        Add license
+                    </MudButton>
+                </MudStack>
+                <MudTable Items="@_licenses" Dense="true" Hover="true" Loading="@_loadingLicenses">
+                    <HeaderContent>
+                        <MudTh>File name</MudTh>
+                        <MudTh>Size</MudTh>
+                        <MudTh Style="width:140px">Actions</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.FileName</MudTd>
+                        <MudTd>@FormatSize(context.SizeBytes)</MudTd>
+                        <MudTd>
+                            <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                            OnClick="@(async () => await ViewLicense(context))" title="View / Copy" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small"
+                                            Href="@LicenseDownloadHref(context)" Target="_blank" title="Download" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                            OnClick="@(async () => await RemoveLicense(context))" title="Remove" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudStack>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Changelog" Icon="@Icons.Material.Filled.History">
+            <MudStack Spacing="2" Class="mt-4">
+                <MudText Typo="Typo.subtitle1">Changes made to this package</MudText>
+                <MudTable Items="@_changelog" Dense="true" Hover="true" Loading="@_loadingChangelog">
+                    <HeaderContent>
+                        <MudTh>When</MudTh>
+                        <MudTh>Type</MudTh>
+                        <MudTh>Action</MudTh>
+                        <MudTh>Item</MudTh>
+                        <MudTh>By</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.ChangedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                        <MudTd>@context.ItemType</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@(context.ChangeType == PackageChangeType.Added ? Color.Success : context.ChangeType == PackageChangeType.Updated ? Color.Info : Color.Warning)">
+                                @context.ChangeType
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>@context.ItemName@(string.IsNullOrEmpty(context.Details) ? "" : $" — {context.Details}")</MudTd>
+                        <MudTd>@(context.ChangedBy ?? "-")</MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudStack>
+        </MudTabPanel>
+    </MudTabs>
+</MudStack>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Package? _package;
+    private List<ModelInfo> _models = new();
+    private List<ModelRow> _modelRows = new();
+    private List<LicenseInfo> _licenses = new();
+    private List<PackageChangeLog> _changelog = new();
+    private bool _loading = true;
+    private bool _loadingModels;
+    private bool _loadingLicenses;
+    private bool _loadingChangelog;
+    private int _activeTab;
+    private bool _addingModel;
+    private bool _addingLicense;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPackage();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_package?.Id != Id)
+            await LoadPackage();
+    }
+
+    private async Task LoadPackage()
+    {
+        _loading = true;
+        _package = await PkgService.GetByIdAsync(Id);
+        _loading = false;
+        if (_package != null)
+        {
+            await LoadModels();
+            await LoadLicenses();
+            await LoadChangelog();
+        }
+    }
+
+    private async Task LoadModels()
+    {
+        _loadingModels = true;
+        _models = await ContentService.GetModelsAsync(Id);
+        _modelRows = BuildModelRows(_models);
+        _loadingModels = false;
+    }
+
+    /// <summary>One row per model: pairs .nupkg and .zip (LCS) or single _managed.zip (Unified).</summary>
+    private static List<ModelRow> BuildModelRows(List<ModelInfo> models)
+    {
+        var rows = new List<ModelRow>();
+        foreach (var group in models.GroupBy(m => (m.Name, m.Version ?? "")))
+        {
+            var list = group.ToList();
+            string? nupkg = null, zipFile = null;
+            long size = 0;
+            foreach (var m in list)
+            {
+                var fn = m.FileName ?? "";
+                if (fn.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase))
+                    nupkg = fn;
+                else if (fn.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    zipFile = fn;
+                    size = m.SizeBytes;
+                }
+            }
+            if (zipFile == null && list.Count > 0)
+                zipFile = list[0].FileName;
+            if (size == 0 && list.Count > 0)
+                size = list.Max(x => x.SizeBytes);
+            var hasLicenses = list.Any(m => m.ContainsLicenses);
+            rows.Add(new ModelRow
+            {
+                Name = group.Key.Item1,
+                Version = group.Key.Item2,
+                NupkgFileName = nupkg,
+                ZipFileName = zipFile,
+                SizeBytes = size,
+                DownloadFileName = zipFile,
+                HasLicenses = hasLicenses
+            });
+        }
+        return rows.OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private string LicenseDownloadHref(LicenseInfo license)
+    {
+        var baseUri = Nav.BaseUri.TrimEnd('/');
+        return $"{baseUri}/api/packages/{Id}/licenses/download?fileName={Uri.EscapeDataString(license.FileName)}";
+    }
+
+    private async Task LoadLicenses()
+    {
+        _loadingLicenses = true;
+        _licenses = await ContentService.GetLicensesAsync(Id);
+        _loadingLicenses = false;
+    }
+
+    private async Task LoadChangelog()
+    {
+        _loadingChangelog = true;
+        _changelog = await ChangeLogService.GetChangeHistoryAsync(Id);
+        _loadingChangelog = false;
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / 1024.0 / 1024.0:F1} MB";
+    }
+
+    /// <summary>Returns display label for package format: LCS or Unified.</summary>
+    private static string PackageFormatLabel(string? packageType)
+    {
+        return string.Equals(packageType, "Unified", StringComparison.OrdinalIgnoreCase) ? "Unified" : "LCS";
+    }
+
+    private string GetModelDownloadUrl(string modelFileName)
+    {
+        var baseUri = Nav.BaseUri.TrimEnd('/');
+        return $"{baseUri}/api/packages/{Id}/models/download?fileName={Uri.EscapeDataString(modelFileName)}";
+    }
+
+    private async Task OpenAddModelDialog()
+    {
+        _addingModel = true;
+        try
+        {
+            var options = new DialogOptions { CloseOnEscapeKey = true };
+            var parameters = new DialogParameters
+            {
+                [nameof(AddPackageFileDialog.PackageId)] = Id,
+                [nameof(AddPackageFileDialog.IsModel)] = true
+            };
+            var result = await DialogService.ShowAsync<AddPackageFileDialog>("Add model", parameters, options);
+            var dialogResult = await result.Result;
+            if (dialogResult != null && !dialogResult.Canceled)
+            {
+                Snackbar.Add("Model added successfully.", Severity.Success);
+                await LoadModels();
+                await LoadChangelog();
+            }
+        }
+        finally { _addingModel = false; }
+    }
+
+    private async Task OpenAddLicenseDialog()
+    {
+        _addingLicense = true;
+        try
+        {
+            var options = new DialogOptions { CloseOnEscapeKey = true };
+            var parameters = new DialogParameters
+            {
+                [nameof(AddPackageFileDialog.PackageId)] = Id,
+                [nameof(AddPackageFileDialog.IsModel)] = false
+            };
+            var result = await DialogService.ShowAsync<AddPackageFileDialog>("Add license", parameters, options);
+            var dialogResult = await result.Result;
+            if (dialogResult != null && !dialogResult.Canceled)
+            {
+                Snackbar.Add("License added successfully.", Severity.Success);
+                await LoadLicenses();
+                await LoadChangelog();
+            }
+        }
+        finally { _addingLicense = false; }
+    }
+
+    private async Task RemoveModelByRow(ModelRow row)
+    {
+        var ok = await DialogService.ShowMessageBox("Remove model",
+            $"Remove model '{row.Name}' from this package?", yesText: "Remove", cancelText: "Cancel");
+        if (ok != true) return;
+        var (success, error) = await ModificationService.RemoveModelAsync(Id, row.Name);
+        if (success)
+        {
+            Snackbar.Add($"Model '{row.Name}' removed.", Severity.Success);
+            await LoadModels();
+            await LoadChangelog();
+        }
+        else
+            Snackbar.Add(error ?? "Failed to remove model", Severity.Error);
+    }
+
+    private async Task ViewLicense(LicenseInfo license)
+    {
+        var content = await ContentService.GetLicenseContentAsync(Id, license.FileName);
+        if (content?.Content == null)
+        {
+            Snackbar.Add("Could not load license content.", Severity.Warning);
+            return;
+        }
+        var text = System.Text.Encoding.UTF8.GetString(content.Content);
+        var isXml = license.FileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase);
+        var parameters = new DialogParameters
+        {
+            [nameof(ViewLicenseDialog.Title)] = "License: " + license.FileName,
+            [nameof(ViewLicenseDialog.ContentText)] = text,
+            [nameof(ViewLicenseDialog.IsXml)] = isXml
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large };
+        await DialogService.ShowAsync<ViewLicenseDialog>(null, parameters, options);
+    }
+
+    private async Task RemoveLicense(LicenseInfo license)
+    {
+        var ok = await DialogService.ShowMessageBox("Remove license",
+            $"Remove license file '{license.FileName}'?", yesText: "Remove", cancelText: "Cancel");
+        if (ok != true) return;
+        var (success, error) = await ModificationService.RemoveLicenseAsync(Id, license.FileName);
+        if (success)
+        {
+            Snackbar.Add($"License '{license.FileName}' removed.", Severity.Success);
+            await LoadLicenses();
+            await LoadChangelog();
+        }
+        else
+            Snackbar.Add(error ?? "Failed to remove license", Severity.Error);
+    }
+
+    private sealed class ModelRow
+    {
+        public string Name { get; set; } = "";
+        public string? Version { get; set; }
+        public string? NupkgFileName { get; set; }
+        public string? ZipFileName { get; set; }
+        public long SizeBytes { get; set; }
+        public string? DownloadFileName { get; set; }
+        /// <summary>True when this model's *_managed.zip contains the license folder (Unified packages).</summary>
+        public bool HasLicenses { get; set; }
+    }
+}

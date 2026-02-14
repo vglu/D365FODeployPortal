@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using DeployPortal.Data;
 using DeployPortal.Models;
+using DeployPortal.PackageOps;
 using Microsoft.EntityFrameworkCore;
 
 namespace DeployPortal.Services.PackageContent;
@@ -269,36 +270,249 @@ public class PackageModificationService : IPackageModificationService
         return await db.Packages.FindAsync(packageId);
     }
 
-    // ===== LCS Package Operations =====
+    /// <summary>
+    /// Modifies a ZIP file: optionally remove entries by path, optionally add new entries.
+    /// Creates a temp file, then replaces the original (atomic on success).
+    /// </summary>
+    private static async Task<(bool Success, string? ErrorMessage)> ModifyZipAsync(
+        string zipPath,
+        HashSet<string>? removeEntryFullNames = null,
+        List<(string EntryFullName, string SourceFilePath)>? addEntries = null)
+    {
+        removeEntryFullNames ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        addEntries ??= new List<(string, string)>();
+
+        var tempPath = zipPath + ".tmp." + Guid.NewGuid().ToString("N")[..8];
+        try
+        {
+            using (var source = ZipFile.OpenRead(zipPath))
+            await using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var dest = new ZipArchive(tempStream, ZipArchiveMode.Create))
+            {
+                foreach (var entry in source.Entries)
+                {
+                    if (removeEntryFullNames.Contains(entry.FullName))
+                        continue;
+                    if (entry.Length == 0 && entry.FullName.EndsWith("/", StringComparison.Ordinal))
+                        continue; // directory entry, skip or create if needed
+                    var destEntry = dest.CreateEntry(entry.FullName, System.IO.Compression.CompressionLevel.Optimal);
+                    destEntry.LastWriteTime = entry.LastWriteTime;
+                    await using (var srcStream = entry.Open())
+                    await using (var dstStream = destEntry.Open())
+                        await srcStream.CopyToAsync(dstStream);
+                }
+
+                foreach (var (entryFullName, sourceFilePath) in addEntries)
+                {
+                    var destEntry = dest.CreateEntry(entryFullName, System.IO.Compression.CompressionLevel.Optimal);
+                    destEntry.LastWriteTime = DateTimeOffset.Now;
+                    await using (var srcStream = File.OpenRead(sourceFilePath))
+                    await using (var dstStream = destEntry.Open())
+                        await srcStream.CopyToAsync(dstStream);
+                }
+            }
+
+            File.Move(tempPath, zipPath, overwrite: true);
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            if (File.Exists(tempPath))
+                try { File.Delete(tempPath); } catch { }
+            return (false, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Finds the path prefix used for models in LCS package (AOSService/Packages/files/ or AOSService/Packages/).
+    /// </summary>
+    private static string GetLcsModelsPathPrefix(ZipArchive zip)
+    {
+        var filesPrefix = "AOSService/Packages/files/";
+        var packagesPrefix = "AOSService/Packages/";
+        bool hasFiles = zip.Entries.Any(e => e.FullName.StartsWith(filesPrefix, StringComparison.OrdinalIgnoreCase));
+        bool hasPackages = zip.Entries.Any(e => e.FullName.StartsWith(packagesPrefix, StringComparison.OrdinalIgnoreCase) && !e.FullName.StartsWith(filesPrefix, StringComparison.OrdinalIgnoreCase));
+        if (hasFiles)
+            return filesPrefix;
+        if (hasPackages)
+            return packagesPrefix;
+        return filesPrefix; // default
+    }
 
     private async Task<(bool Success, string? ErrorMessage)> AddModelToLcsPackageAsync(
         string packagePath, string modelFilePath)
     {
-        // TODO: Implement LCS-specific model addition
-        // Models go to AOSService/Packages/files/
-        return await Task.FromResult((false, "LCS model addition not yet implemented"));
+        var fileName = Path.GetFileName(modelFilePath);
+        if (string.IsNullOrEmpty(fileName))
+            return (false, "Invalid model file name");
+
+        return await Task.Run(async () =>
+        {
+            try
+            {
+                string entryPath;
+                using (var zip = ZipFile.OpenRead(packagePath))
+                {
+                    var prefix = GetLcsModelsPathPrefix(zip);
+                    entryPath = prefix + fileName;
+                }
+
+                var addList = new List<(string EntryFullName, string SourceFilePath)> { (entryPath, modelFilePath) };
+
+                // If user uploaded only .zip, generate minimal .nupkg and add it too (model = nupkg + zip in \files)
+                if (fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    var nupkgFileName = Path.GetFileNameWithoutExtension(fileName) + ".nupkg";
+                    var nupkgPath = CreateMinimalNupkgForZipFileName(fileName);
+                    if (nupkgPath != null)
+                    {
+                        try
+                        {
+                            using (var zip = ZipFile.OpenRead(packagePath))
+                            {
+                                var prefix = GetLcsModelsPathPrefix(zip);
+                                addList.Add((prefix + nupkgFileName, nupkgPath));
+                            }
+                        }
+                        finally
+                        {
+                            if (File.Exists(nupkgPath))
+                                try { File.Delete(nupkgPath); } catch { }
+                        }
+                    }
+                }
+
+                return await ModifyZipAsync(packagePath, removeEntryFullNames: null, addEntries: addList);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        });
+    }
+
+    /// <summary>Creates a minimal .nupkg (zip with .nuspec only) so LCS has both nupkg and zip for the model.</summary>
+    private static string? CreateMinimalNupkgForZipFileName(string zipFileName)
+    {
+        var baseName = Path.GetFileNameWithoutExtension(zipFileName);
+        if (string.IsNullOrEmpty(baseName)) return null;
+        // dynamicsax-atlas.388.10.0.41 -> id dynamicsax-atlas, version 388.10.0.41
+        var parts = baseName.Split('.');
+        string nuspecId = baseName;
+        var version = "1.0.0.0";
+        if (parts.Length >= 4)
+        {
+            var last4 = parts[^4..];
+            if (last4.All(p => p.Length > 0 && p.All(char.IsDigit)))
+            {
+                version = string.Join(".", last4);
+                nuspecId = string.Join(".", parts[..^4]);
+            }
+        }
+        var nuspecEntryName = nuspecId + ".nuspec";
+        var nuspecXml = $@"<?xml version=""1.0"" encoding=""utf-8""?>
+<package xmlns=""http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd"">
+  <metadata>
+    <id>{nuspecId}</id>
+    <version>{version}</version>
+  </metadata>
+</package>";
+        var tempPath = Path.Combine(Path.GetTempPath(), "DeployPortal_" + Guid.NewGuid().ToString("N")[..8] + ".nupkg");
+        try
+        {
+            using (var zip = ZipFile.Open(tempPath, ZipArchiveMode.Create))
+            {
+                var entry = zip.CreateEntry(nuspecEntryName, CompressionLevel.Fastest);
+                using var stream = entry.Open();
+                using var writer = new StreamWriter(stream, System.Text.Encoding.UTF8);
+                writer.Write(nuspecXml);
+            }
+            return tempPath;
+        }
+        catch
+        {
+            if (File.Exists(tempPath)) try { File.Delete(tempPath); } catch { }
+            return null;
+        }
     }
 
     private async Task<(bool Success, string? ErrorMessage)> RemoveModelFromLcsPackageAsync(
         string packagePath, string modelName)
     {
-        // TODO: Implement LCS-specific model removal
-        return await Task.FromResult((false, "LCS model removal not yet implemented"));
+        return await Task.Run(async () =>
+        {
+            try
+            {
+                var toRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                using (var zip = ZipFile.OpenRead(packagePath))
+                {
+                    var prefix = GetLcsModelsPathPrefix(zip);
+                    foreach (var entry in zip.Entries)
+                    {
+                        if (entry.Length == 0)
+                            continue;
+                        var name = entry.FullName.Replace("\\", "/");
+                        if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                        var filePart = name[prefix.Length..].TrimStart('/');
+                        if (string.IsNullOrEmpty(filePart))
+                            continue;
+                        var entryFileName = filePart.Contains('/') ? filePart[..filePart.IndexOf('/')] : filePart;
+                        var entryModelName = PackageAnalyzer.ExtractModuleNameFromNupkg(entryFileName);
+                        if (entryModelName.Equals(modelName, StringComparison.OrdinalIgnoreCase))
+                            toRemove.Add(entry.FullName);
+                    }
+                }
+
+                if (toRemove.Count == 0)
+                    return (false, $"Model '{modelName}' not found in package");
+
+                return await ModifyZipAsync(packagePath, removeEntryFullNames: toRemove, addEntries: null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        });
     }
+
+    private static readonly string LcsLicensePrefix = "AOSService/Scripts/License/";
 
     private async Task<(bool Success, string? ErrorMessage)> AddLicenseToLcsPackageAsync(
         string packagePath, string licenseFilePath)
     {
-        // TODO: Implement LCS-specific license addition
-        // Licenses go to AOSService/Scripts/License/
-        return await Task.FromResult((false, "LCS license addition not yet implemented"));
+        var fileName = Path.GetFileName(licenseFilePath);
+        if (string.IsNullOrEmpty(fileName))
+            return (false, "Invalid license file name");
+
+        var entryPath = LcsLicensePrefix + fileName;
+        var addList = new List<(string EntryFullName, string SourceFilePath)> { (entryPath, licenseFilePath) };
+        return await ModifyZipAsync(packagePath, removeEntryFullNames: null, addEntries: addList);
     }
 
     private async Task<(bool Success, string? ErrorMessage)> RemoveLicenseFromLcsPackageAsync(
         string packagePath, string licenseFileName)
     {
-        // TODO: Implement LCS-specific license removal
-        return await Task.FromResult((false, "LCS license removal not yet implemented"));
+        var toRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var zip = ZipFile.OpenRead(packagePath))
+        {
+            foreach (var entry in zip.Entries)
+            {
+                if (entry.Length == 0)
+                    continue;
+                var name = entry.FullName.Replace("\\", "/");
+                if (!name.StartsWith(LcsLicensePrefix, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var filePart = name[LcsLicensePrefix.Length..].TrimStart('/');
+                if (filePart.Equals(licenseFileName, StringComparison.OrdinalIgnoreCase))
+                    toRemove.Add(entry.FullName);
+            }
+        }
+
+        if (toRemove.Count == 0)
+            return (false, $"License '{licenseFileName}' not found in package");
+
+        return await ModifyZipAsync(packagePath, removeEntryFullNames: toRemove, addEntries: null);
     }
 
     // ===== Unified Package Operations =====
@@ -306,30 +520,228 @@ public class PackageModificationService : IPackageModificationService
     private async Task<(bool Success, string? ErrorMessage)> AddModelToUnifiedPackageAsync(
         string packagePath, string modelFilePath)
     {
-        // TODO: Implement Unified-specific model addition
-        // Models are *_managed.zip files at root level
-        return await Task.FromResult((false, "Unified model addition not yet implemented"));
+        var fileName = Path.GetFileName(modelFilePath);
+        if (string.IsNullOrEmpty(fileName) || !fileName.EndsWith("_managed.zip", StringComparison.OrdinalIgnoreCase))
+            return (false, "Unified model must be a *_managed.zip file");
+
+        var entryPath = fileName; // root of package
+        var addList = new List<(string EntryFullName, string SourceFilePath)> { (entryPath, modelFilePath) };
+        return await ModifyZipAsync(packagePath, removeEntryFullNames: null, addEntries: addList);
     }
 
     private async Task<(bool Success, string? ErrorMessage)> RemoveModelFromUnifiedPackageAsync(
         string packagePath, string modelName)
     {
-        // TODO: Implement Unified-specific model removal
-        return await Task.FromResult((false, "Unified model removal not yet implemented"));
+        return await Task.Run(async () =>
+        {
+            var toRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var zip = ZipFile.OpenRead(packagePath))
+            {
+                foreach (var entry in zip.Entries)
+                {
+                    if (entry.Length == 0)
+                        continue;
+                    var name = entry.FullName.Replace("\\", "/").TrimEnd('/');
+                    if (!name.EndsWith("_managed.zip", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (name.Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var fileName = name.Contains('/') ? name[(name.LastIndexOf('/') + 1)..] : name;
+                    var entryModelName = PackageAnalyzer.ExtractModuleNameFromManagedZip(fileName);
+                    if (entryModelName.Equals(modelName, StringComparison.OrdinalIgnoreCase))
+                        toRemove.Add(entry.FullName);
+                }
+            }
+
+            if (toRemove.Count == 0)
+                return (false, $"Model '{modelName}' not found in package");
+
+            return await ModifyZipAsync(packagePath, removeEntryFullNames: toRemove, addEntries: null);
+        });
     }
 
+    /// <summary>
+    /// For Unified packages, licenses live inside a *_managed.zip. We modify the first non-Default managed zip.
+    /// </summary>
     private async Task<(bool Success, string? ErrorMessage)> AddLicenseToUnifiedPackageAsync(
         string packagePath, string licenseFilePath)
     {
-        // TODO: Implement Unified-specific license addition
-        // Licenses go inside *_managed.zip files
-        return await Task.FromResult((false, "Unified license addition not yet implemented"));
+        var fileName = Path.GetFileName(licenseFilePath);
+        if (string.IsNullOrEmpty(fileName))
+            return (false, "Invalid license file name");
+
+        return await Task.Run(async () =>
+        {
+            try
+            {
+                byte[]? modifiedManagedZip = null;
+                string? managedZipEntryName = null;
+
+                using (var zip = ZipFile.OpenRead(packagePath))
+                {
+                    var mzEntry = zip.Entries.FirstOrDefault(e =>
+                        e.FullName.EndsWith("_managed.zip", StringComparison.OrdinalIgnoreCase)
+                        && !e.FullName.Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase)
+                        && e.Length > 0);
+
+                    if (mzEntry == null)
+                        return (false, "No *_managed.zip found in package to add license to");
+
+                    managedZipEntryName = mzEntry.FullName;
+                    var moduleName = PackageAnalyzer.ExtractModuleNameFromManagedZip(Path.GetFileName(mzEntry.Name));
+                    var licenseGuid = Guid.NewGuid().ToString("N")[..8];
+                    var innerEntryPath = $"{moduleName}/_License_{licenseGuid}/{fileName}";
+
+                    using var ms = new MemoryStream();
+                    using (var stream = mzEntry.Open())
+                        await stream.CopyToAsync(ms);
+                    ms.Position = 0;
+
+                    using (var innerZip = new ZipArchive(ms, ZipArchiveMode.Update))
+                    {
+                        var newEntry = innerZip.CreateEntry(innerEntryPath, System.IO.Compression.CompressionLevel.Optimal);
+                        await using (var src = File.OpenRead(licenseFilePath))
+                        await using (var dst = newEntry.Open())
+                            await src.CopyToAsync(dst);
+                    }
+
+                    modifiedManagedZip = ms.ToArray();
+                }
+
+                if (modifiedManagedZip == null || string.IsNullOrEmpty(managedZipEntryName))
+                    return (false, "Could not modify inner package");
+
+                var tempPath = packagePath + ".tmp." + Guid.NewGuid().ToString("N")[..8];
+                try
+                {
+                    using (var source = ZipFile.OpenRead(packagePath))
+                    await using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                    using (var dest = new ZipArchive(tempStream, ZipArchiveMode.Create))
+                    {
+                        foreach (var entry in source.Entries)
+                        {
+                            var en = entry.FullName;
+                            if (en.Equals(managedZipEntryName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                var destEntry = dest.CreateEntry(managedZipEntryName, System.IO.Compression.CompressionLevel.Optimal);
+                                await using (var dstStream = destEntry.Open())
+                                    await new MemoryStream(modifiedManagedZip).CopyToAsync(dstStream);
+                                continue;
+                            }
+                            if (entry.Length == 0 && entry.FullName.EndsWith("/", StringComparison.Ordinal))
+                                continue;
+                            var destEntry2 = dest.CreateEntry(entry.FullName, System.IO.Compression.CompressionLevel.Optimal);
+                            await using (var srcStream = entry.Open())
+                            await using (var dstStream = destEntry2.Open())
+                                await srcStream.CopyToAsync(dstStream);
+                        }
+                    }
+                    File.Move(tempPath, packagePath, overwrite: true);
+                    return (true, (string?)null);
+                }
+                catch
+                {
+                    if (File.Exists(tempPath))
+                        try { File.Delete(tempPath); } catch { }
+                    throw;
+                }
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        });
     }
 
     private async Task<(bool Success, string? ErrorMessage)> RemoveLicenseFromUnifiedPackageAsync(
         string packagePath, string licenseFileName)
     {
-        // TODO: Implement Unified-specific license removal
-        return await Task.FromResult((false, "Unified license removal not yet implemented"));
+        return await Task.Run(async () =>
+        {
+            try
+            {
+                byte[]? modifiedManagedZip = null;
+                string? managedZipEntryName = null;
+
+                using (var zip = ZipFile.OpenRead(packagePath))
+                {
+                    foreach (var mzEntry in zip.Entries.Where(e =>
+                        e.FullName.EndsWith("_managed.zip", StringComparison.OrdinalIgnoreCase)
+                        && !e.FullName.Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase)
+                        && e.Length > 0))
+                    {
+                        using var ms = new MemoryStream();
+                        using (var stream = mzEntry.Open())
+                            await stream.CopyToAsync(ms);
+                        ms.Position = 0;
+
+                        var toRemove = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        using (var innerZip = new ZipArchive(ms, ZipArchiveMode.Read))
+                        {
+                            foreach (var ie in innerZip.Entries)
+                            {
+                                if (ie.Length == 0) continue;
+                                var fn = ie.FullName.Replace("\\", "/").Split('/', '\\').LastOrDefault();
+                                if (string.Equals(fn, licenseFileName, StringComparison.OrdinalIgnoreCase))
+                                    toRemove.Add(ie.FullName);
+                            }
+                        }
+
+                        if (toRemove.Count == 0)
+                            continue;
+
+                        ms.Position = 0;
+                        var tempMs = new MemoryStream();
+                        using (var srcZip = new ZipArchive(ms, ZipArchiveMode.Read))
+                        using (var destZip = new ZipArchive(tempMs, ZipArchiveMode.Create))
+                        {
+                            foreach (var entry in srcZip.Entries)
+                            {
+                                if (toRemove.Contains(entry.FullName)) continue;
+                                if (entry.Length == 0 && entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
+                                var destEntry = destZip.CreateEntry(entry.FullName, System.IO.Compression.CompressionLevel.Optimal);
+                                await using (var srcStream = entry.Open())
+                                await using (var dstStream = destEntry.Open())
+                                    await srcStream.CopyToAsync(dstStream);
+                            }
+                        }
+                        modifiedManagedZip = tempMs.ToArray();
+                        managedZipEntryName = mzEntry.FullName;
+                        break;
+                    }
+                }
+
+                if (modifiedManagedZip == null || string.IsNullOrEmpty(managedZipEntryName))
+                    return (false, $"License '{licenseFileName}' not found in package");
+
+                var tempPath = packagePath + ".tmp." + Guid.NewGuid().ToString("N")[..8];
+                using (var source = ZipFile.OpenRead(packagePath))
+                await using (var tempStream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                using (var dest = new ZipArchive(tempStream, ZipArchiveMode.Create))
+                {
+                    foreach (var entry in source.Entries)
+                    {
+                        if (entry.FullName.Equals(managedZipEntryName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            var destEntry = dest.CreateEntry(managedZipEntryName, System.IO.Compression.CompressionLevel.Optimal);
+                            await using (var dstStream = destEntry.Open())
+                                await new MemoryStream(modifiedManagedZip).CopyToAsync(dstStream);
+                            continue;
+                        }
+                        if (entry.Length == 0 && entry.FullName.EndsWith("/", StringComparison.Ordinal)) continue;
+                        var destEntry2 = dest.CreateEntry(entry.FullName, System.IO.Compression.CompressionLevel.Optimal);
+                        await using (var srcStream = entry.Open())
+                        await using (var dstStream = destEntry2.Open())
+                            await srcStream.CopyToAsync(dstStream);
+                    }
+                }
+                File.Move(tempPath, packagePath, overwrite: true);
+                return (true, (string?)null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        });
     }
 }

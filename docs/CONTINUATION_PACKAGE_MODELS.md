@@ -41,10 +41,10 @@
 
 ---
 
-## Что осталось сделать
+## Что осталось сделать (опционально)
 
-### Приоритет 1: Реализация модификации пакетов
-В **`PackageModificationService.cs`** дописать методы (сейчас возвращают "not yet implemented"):
+### ✅ Реализация модификации пакетов — ГОТОВО
+В **`PackageModificationService.cs`** все методы реализованы (LCS и Unified):
 
 | Метод | LCS/Merged | Unified |
 |-------|------------|---------|
@@ -57,18 +57,14 @@
 | `AddLicenseToUnifiedPackageAsync` | — | Добавить лицензию в нужный *_managed.zip (в _License_) |
 | `RemoveLicenseFromUnifiedPackageAsync` | — | Удалить из _License_ внутри *_managed.zip |
 
-Подход к модификации ZIP: создать временную копию пакета, открыть в `ZipArchiveMode.Update` (или пересобрать архив), внести изменения, заменить оригинал. Для Unified учитывать вложенные ZIP.
+### ✅ UI — ГОТОВО
+- Страница **`/packages/{Id}/details`** с вкладками **Models**, **Licenses**, **Changelog**.
+- Диалог **AddPackageFileDialog** для загрузки файла модели или лицензии.
+- В меню пакета на странице Packages добавлен пункт «Manage content».
 
-### Приоритет 2: UI
-- Страница **`/packages/{id}/details`** (или аналог) с вкладками:
-  - **Models** — список моделей (из `IPackageContentService.GetModelsAsync`), кнопки добавить/удалить (вызов `IPackageModificationService`).
-  - **Licenses** — список лицензий, просмотр содержимого, добавить/удалить.
-  - **Changelog** — таблица из `IPackageChangeLogService.GetChangeHistoryAsync(packageId)`.
-- Со страницы списка пакетов — переход на эту страницу (например, "Details" / "Manage content").
-
-### Приоритет 3: Тесты
-- **Unit-тесты:** `PackageContentService` (на тестовых ZIP), `PackageChangeLogService`, `PackageModificationService` (валидация и вызов лога).
-- **E2E:** сценарии "открыть пакет → добавить модель/лицензию → проверить список и changelog" и "удалить модель/лицензию".
+### Приоритет 3: Тесты (частично)
+- **Unit-тесты:** добавлены в `DeployPortal.Tests/PackageContent/PackageContentServicesUnitTests.cs` для `PackageChangeLogService` и `PackageModificationService.ValidateModelRemovalAsync`.
+- **E2E:** при необходимости добавить сценарии с Playwright.
 
 ### Приоритет 4: Доработки
 - Валидация зависимостей при удалении модели уже есть: `ValidateModelRemovalAsync`.
@@ -83,7 +79,7 @@
 |--------|--------|
 | Модели и лог | `src/DeployPortal/Models/PackageChangeLog.cs`, `PackageContentDtos.cs` |
 | Чтение содержимого | `src/DeployPortal/Services/PackageContent/PackageContentService.cs` |
-| Модификация (дописать) | `src/DeployPortal/Services/PackageContent/PackageModificationService.cs` |
+| Модификация пакетов | `src/DeployPortal/Services/PackageContent/PackageModificationService.cs` |
 | Лог изменений | `src/DeployPortal/Services/PackageContent/PackageChangeLogService.cs` |
 | БД и миграция | `src/DeployPortal/Data/AppDbContext.cs`, `Program.cs` (поиск по "PackageChangeLog") |
 | Анализ пакетов | `src/DeployPortal.PackageOps/PackageAnalyzer.cs`, `ConvertEngine.cs` (структура LCS/Unified) |

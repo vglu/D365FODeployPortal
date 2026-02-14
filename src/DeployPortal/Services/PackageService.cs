@@ -2,6 +2,7 @@ using System.IO.Compression;
 using DeployPortal.Data;
 using DeployPortal.Models;
 using DeployPortal.PackageOps;
+using DeployPortal.Services.PackageContent;
 using Microsoft.EntityFrameworkCore;
 
 namespace DeployPortal.Services;
@@ -15,26 +16,37 @@ public class PackageService
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly SettingsService _settings;
     private readonly IConvertService _convertService;
+    private readonly IPackageChangeLogService _changeLogService;
     private readonly ILogger<PackageService> _logger;
 
     public PackageService(
         IDbContextFactory<AppDbContext> dbFactory,
         SettingsService settings,
         IConvertService convertService,
+        IPackageChangeLogService changeLogService,
         ILogger<PackageService> logger)
     {
         _dbFactory = dbFactory;
         _settings = settings;
         _convertService = convertService;
+        _changeLogService = changeLogService;
         _logger = logger;
     }
 
     private string StoragePath => _settings.PackageStoragePath;
 
+    /// <summary>Returns active (non-archived) packages.</summary>
     public async Task<List<Package>> GetAllAsync()
     {
         await using var db = await _dbFactory.CreateDbContextAsync();
-        return await db.Packages.OrderByDescending(p => p.UploadedAt).ToListAsync();
+        return await db.Packages.Where(p => !p.IsArchived).OrderByDescending(p => p.UploadedAt).ToListAsync();
+    }
+
+    /// <summary>Returns archived packages.</summary>
+    public async Task<List<Package>> GetArchivedAsync()
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        return await db.Packages.Where(p => p.IsArchived).OrderByDescending(p => p.ArchivedAt ?? p.UploadedAt).ToListAsync();
     }
 
     public async Task<Package?> GetByIdAsync(int id)
@@ -95,6 +107,64 @@ public class PackageService
         await db.SaveChangesAsync();
 
         _logger.LogInformation("Package {Name} DevOps URL updated to: {Url}", package.Name, package.DevOpsTaskUrl ?? "(cleared)");
+    }
+
+    /// <summary>
+    /// Updates package name and/or DevOps task URL. Logs each change to package changelog.
+    /// </summary>
+    public async Task UpdatePackageAsync(int packageId, string? name, string? devOpsTaskUrl, string? changedBy = null)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var package = await db.Packages.FindAsync(packageId);
+        if (package == null) return;
+
+        var oldName = package.Name;
+        var oldUrl = package.DevOpsTaskUrl;
+
+        if (!string.IsNullOrWhiteSpace(name))
+            package.Name = name.Trim();
+        if (devOpsTaskUrl != null)
+            package.DevOpsTaskUrl = string.IsNullOrWhiteSpace(devOpsTaskUrl) ? null : devOpsTaskUrl.Trim();
+        await db.SaveChangesAsync();
+
+        if (!string.IsNullOrWhiteSpace(name) && !string.Equals(oldName, package.Name, StringComparison.Ordinal))
+            await _changeLogService.LogChangeAsync(packageId, PackageChangeType.Updated, "Name", package.Name, $"Previous: {oldName}", changedBy);
+        if (devOpsTaskUrl != null && oldUrl != package.DevOpsTaskUrl)
+            await _changeLogService.LogChangeAsync(packageId, PackageChangeType.Updated, "TicketUrl", package.DevOpsTaskUrl ?? "(cleared)", $"Previous: {oldUrl ?? "(none)"}", changedBy);
+
+        _logger.LogInformation("Package {Id} updated: Name={Name}, DevOpsUrl={Url}", packageId, package.Name, package.DevOpsTaskUrl ?? "(cleared)");
+    }
+
+    /// <summary>
+    /// Archives a package (soft delete). It will appear only in the Archive tab.
+    /// </summary>
+    public async Task ArchiveAsync(int packageId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var package = await db.Packages.FindAsync(packageId);
+        if (package == null) return;
+
+        package.IsArchived = true;
+        package.ArchivedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        _logger.LogInformation("Package archived: {Name} (Id={Id})", package.Name, packageId);
+    }
+
+    /// <summary>
+    /// Restores an archived package to active list.
+    /// </summary>
+    public async Task RestoreAsync(int packageId)
+    {
+        await using var db = await _dbFactory.CreateDbContextAsync();
+        var package = await db.Packages.FindAsync(packageId);
+        if (package == null) return;
+
+        package.IsArchived = false;
+        package.ArchivedAt = null;
+        await db.SaveChangesAsync();
+
+        _logger.LogInformation("Package restored: {Name} (Id={Id})", package.Name, packageId);
     }
 
     /// <summary>

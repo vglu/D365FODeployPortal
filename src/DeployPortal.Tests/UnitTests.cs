@@ -1,6 +1,7 @@
 using DeployPortal.Data;
 using DeployPortal.Models;
 using DeployPortal.Services;
+using DeployPortal.Services.PackageContent;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -19,6 +20,7 @@ public class UnitTests
     private string _testDir = "";
     private IDbContextFactory<AppDbContext> _dbFactory = null!;
     private Mock<IConvertService> _convertMock = null!;
+    private Mock<IPackageChangeLogService> _changeLogMock = null!;
     private SettingsService _settings = null!;
 
     [SetUp]
@@ -36,6 +38,8 @@ public class UnitTests
         _dbFactory = new PooledDbContextFactory(options);
 
         _convertMock = new Mock<IConvertService>();
+        _changeLogMock = new Mock<IPackageChangeLogService>();
+        _changeLogMock.Setup(c => c.LogChangeAsync(It.IsAny<int>(), It.IsAny<PackageChangeType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>())).Returns(Task.CompletedTask);
 
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -65,6 +69,7 @@ public class UnitTests
             _dbFactory,
             _settings,
             _convertMock.Object,
+            _changeLogMock.Object,
             logger.Object);
 
         var pkg = new Package
@@ -91,6 +96,7 @@ public class UnitTests
             _dbFactory,
             _settings,
             _convertMock.Object,
+            _changeLogMock.Object,
             logger.Object);
 
         var pkg = new Package
@@ -139,6 +145,7 @@ public class UnitTests
             _dbFactory,
             _settings,
             _convertMock.Object,
+            _changeLogMock.Object,
             logger.Object);
 
         var sourcePkg = (await svc.GetByIdAsync(1))!;
@@ -168,6 +175,7 @@ public class UnitTests
             _dbFactory,
             _settings,
             _convertMock.Object,
+            _changeLogMock.Object,
             logger.Object);
 
         var pkg = new Package
@@ -219,6 +227,7 @@ public class UnitTests
             _dbFactory,
             _settings,
             _convertMock.Object,
+            _changeLogMock.Object,
             logger.Object);
 
         var sourcePkg = (await svc.GetByIdAsync(1))!;
@@ -263,7 +272,7 @@ public class UnitTests
         }
 
         var logger = new Mock<ILogger<PackageService>>();
-        var svc = new PackageService(_dbFactory, _settings, _convertMock.Object, logger.Object);
+        var svc = new PackageService(_dbFactory, _settings, _convertMock.Object, _changeLogMock.Object, logger.Object);
         await svc.RefreshLicenseInfoAsync(1);
 
         var pkg = await svc.GetByIdAsync(1);

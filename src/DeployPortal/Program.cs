@@ -95,12 +95,15 @@ try
     builder.Services.AddDbContextFactory<AppDbContext>(options =>
         options.UseSqlite($"Data Source={dbPath}"));
 
-    // Data Protection (for encrypting secrets) — persist keys to a stable directory
-    // so they survive container restarts and app redeployments
+    // Data Protection (antiforgery, secrets) — persist keys so they survive restarts
     var dataProtectionKeysDir = builder.Configuration["DeployPortal:DataProtectionKeysPath"];
+    if (string.IsNullOrWhiteSpace(dataProtectionKeysDir) && !string.IsNullOrEmpty(dbDir))
+        dataProtectionKeysDir = Path.Combine(dbDir, "DataProtection-Keys");
     if (string.IsNullOrWhiteSpace(dataProtectionKeysDir))
-        dataProtectionKeysDir = Path.Combine(@"C:\DeployPortal", "keys");
+        dataProtectionKeysDir = Path.Combine(AppContext.BaseDirectory, "DataProtection-Keys");
     Directory.CreateDirectory(dataProtectionKeysDir);
+    // If you see "antiforgery token could not be decrypted" / "key was not found in the key ring"
+    // after a restart, clear cookies for this site once (or open in a private window) so a new token is issued.
     builder.Services.AddDataProtection()
         .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysDir));
 
@@ -252,6 +255,8 @@ try
         EnsureColumn("Deployments", "ReleaseUrl", "TEXT NULL");
         EnsureColumn("Deployments", "IsArchived", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumn("Deployments", "ArchivedAt", "TEXT NULL");
+        EnsureColumn("Packages", "IsArchived", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumn("Packages", "ArchivedAt", "TEXT NULL");
 
         // Package change log table (feature/package-models-management)
         void EnsurePackageChangeLogsTable(AppDbContext ctx)
@@ -644,7 +649,34 @@ try
         return Results.File(pkg.StoredFilePath, "application/zip", fileName);
     });
 
-    // ── License files download API ──
+    // ── Single model file download API ──
+    app.MapGet("/api/packages/{id:int}/models/download", async (int id, string? fileName, IPackageContentService contentService) =>
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return Results.BadRequest("fileName is required");
+        var content = await contentService.GetModelFileContentAsync(id, fileName.Trim());
+        if (content == null || content.Length == 0)
+            return Results.NotFound("Model file not found");
+        var safeName = Path.GetFileName(fileName);
+        if (string.IsNullOrEmpty(safeName)) safeName = "model.zip";
+        return Results.File(content, "application/octet-stream", safeName);
+    });
+
+    // ── Single license file download API ──
+    app.MapGet("/api/packages/{id:int}/licenses/download", async (int id, string? fileName, IPackageContentService contentService) =>
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return Results.BadRequest("fileName is required");
+        var content = await contentService.GetLicenseContentAsync(id, fileName.Trim());
+        if (content?.Content == null || content.Content.Length == 0)
+            return Results.NotFound("License file not found");
+        var safeName = Path.GetFileName(fileName);
+        if (string.IsNullOrEmpty(safeName)) safeName = "license.txt";
+        var contentType = safeName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) ? "application/xml" : "text/plain";
+        return Results.File(content.Content, contentType, safeName);
+    });
+
+    // ── All license files (single file or ZIP) ──
     app.MapGet("/api/packages/{id:int}/licenses", async (int id, IDbContextFactory<AppDbContext> dbFactory) =>
     {
         await using var db = await dbFactory.CreateDbContextAsync();

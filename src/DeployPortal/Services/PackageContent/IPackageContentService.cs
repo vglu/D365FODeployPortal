@@ -37,4 +37,12 @@ public interface IPackageContentService
     /// <param name="licenseFileName">License file name</param>
     /// <returns>License info with content</returns>
     Task<LicenseInfo?> GetLicenseContentAsync(int packageId, string licenseFileName);
+
+    /// <summary>
+    /// Gets raw file content of a model (e.g. .nupkg or *_managed.zip) for download.
+    /// </summary>
+    /// <param name="packageId">Package ID</param>
+    /// <param name="modelFileName">Model file name as in package (e.g. dynamicsax-App.1.0.0.0.nupkg)</param>
+    /// <returns>File content or null if not found</returns>
+    Task<byte[]?> GetModelFileContentAsync(int packageId, string modelFileName);
 }

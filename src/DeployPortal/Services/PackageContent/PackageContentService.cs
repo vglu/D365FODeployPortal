@@ -32,12 +32,26 @@ public class PackageContentService : IPackageContentService
 
         try
         {
-            return package.PackageType switch
+            var path = package.StoredFilePath;
+            var list = package.PackageType switch
             {
-                "LCS" or "Merged" => await GetModelsFromLcsPackageAsync(package.StoredFilePath),
-                "Unified" => await GetModelsFromUnifiedPackageAsync(package.StoredFilePath),
+                "LCS" or "Merged" => await GetModelsFromLcsPackageAsync(path),
+                "Unified" => await GetModelsFromUnifiedPackageAsync(path),
                 _ => new List<ModelInfo>()
             };
+
+            // If type "Other" or list empty, try other format(s)
+            if (list.Count == 0)
+            {
+                var tryUnified = package.PackageType is not "Unified";
+                var tryLcs = package.PackageType is not "LCS" and not "Merged";
+                if (tryUnified)
+                    list = await GetModelsFromUnifiedPackageAsync(path);
+                if (list.Count == 0 && tryLcs)
+                    list = await GetModelsFromLcsPackageAsync(path);
+            }
+
+            return list;
         }
         catch (Exception ex)
         {
@@ -54,12 +68,14 @@ public class PackageContentService : IPackageContentService
 
         try
         {
-            var licenseFiles = PackageAnalyzer.DetectLicenseFiles(package.StoredFilePath);
-            return licenseFiles.Select(fn => new LicenseInfo
+            // ExtractLicenseFileContents returns (FileName, Content) for both LCS and Unified (nested in *_managed.zip)
+            var licenseContents = await Task.Run(() =>
+                PackageAnalyzer.ExtractLicenseFileContents(package.StoredFilePath));
+            return licenseContents.Select(l => new LicenseInfo
             {
-                FileName = fn,
-                SizeBytes = 0, // Will be filled when content is loaded
-                ContentType = fn.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                FileName = l.FileName,
+                SizeBytes = l.Content.Length,
+                ContentType = l.FileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
                     ? "application/xml"
                     : "text/plain"
             }).ToList();
@@ -111,6 +127,41 @@ public class PackageContentService : IPackageContentService
         }
     }
 
+    public async Task<byte[]?> GetModelFileContentAsync(int packageId, string modelFileName)
+    {
+        var package = await GetPackageAsync(packageId);
+        if (package == null || !File.Exists(package.StoredFilePath) || string.IsNullOrEmpty(modelFileName))
+            return null;
+
+        return await Task.Run(() =>
+        {
+            try
+            {
+                using var zip = ZipFile.OpenRead(package.StoredFilePath);
+                var entry = zip.Entries.FirstOrDefault(e =>
+                    string.Equals(GetEntryFileName(e.FullName), modelFileName, StringComparison.OrdinalIgnoreCase));
+                if (entry == null)
+                    return (byte[]?)null;
+                using var ms = new MemoryStream();
+                using (var stream = entry.Open())
+                    stream.CopyTo(ms);
+                return ms.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to read model file {FileName} from package {PackageId}",
+                    modelFileName, packageId);
+                return null;
+            }
+        });
+    }
+
+    private static string GetEntryFileName(string fullName)
+    {
+        var path = NormalizeZipPath(fullName);
+        return path.Contains('/') ? path[(path.LastIndexOf('/') + 1)..] : path;
+    }
+
     // ===== Private helpers =====
 
     private async Task<Package?> GetPackageAsync(int packageId)
@@ -119,6 +170,9 @@ public class PackageContentService : IPackageContentService
         return await db.Packages.FindAsync(packageId);
     }
 
+    private static string NormalizeZipPath(string fullName) =>
+        fullName?.Replace('\\', '/') ?? "";
+
     private async Task<List<ModelInfo>> GetModelsFromLcsPackageAsync(string zipPath)
     {
         return await Task.Run(() =>
@@ -126,12 +180,19 @@ public class PackageContentService : IPackageContentService
             var models = new List<ModelInfo>();
             using var zip = ZipFile.OpenRead(zipPath);
 
-            // LCS packages have models as .nupkg files in AOSService/Packages/files/ or AOSService/Packages/
+            // LCS packages have models as .nupkg/.zip in AOSService/Packages/files/ or AOSService/Packages/
+            // Normalize path: ZIP can use either / or \ depending on how it was created
             var modelFiles = zip.Entries
-                .Where(e => e.FullName.Contains("AOSService/Packages/", StringComparison.OrdinalIgnoreCase)
-                    && (e.FullName.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase)
-                        || e.FullName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-                    && e.FullName.Contains("dynamicsax-", StringComparison.OrdinalIgnoreCase))
+                .Where(e =>
+                {
+                    var path = NormalizeZipPath(e.FullName);
+                    var fileName = path.Contains('/') ? path[(path.LastIndexOf('/') + 1)..] : path;
+                    return path.Contains("AOSService/Packages/", StringComparison.OrdinalIgnoreCase)
+                        && (fileName.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase)
+                            || fileName.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                        && (path.Contains("dynamicsax-", StringComparison.OrdinalIgnoreCase)
+                            || fileName.Contains("dynamicsax-", StringComparison.OrdinalIgnoreCase));
+                })
                 .ToList();
 
             foreach (var entry in modelFiles)
@@ -172,10 +233,15 @@ public class PackageContentService : IPackageContentService
             var models = new List<ModelInfo>();
             using var zip = ZipFile.OpenRead(zipPath);
 
-            // Unified packages have *_managed.zip files at root level
+            // Unified packages have *_managed.zip (at root or in subfolders); exclude DefaultDevSolution
             var managedZips = zip.Entries
-                .Where(e => e.FullName.EndsWith("_managed.zip", StringComparison.OrdinalIgnoreCase)
-                    && !e.FullName.Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase))
+                .Where(e =>
+                {
+                    var path = NormalizeZipPath(e.FullName);
+                    var fileName = path.Contains('/') ? path[(path.LastIndexOf('/') + 1)..] : path;
+                    return fileName.EndsWith("_managed.zip", StringComparison.OrdinalIgnoreCase)
+                        && !path.Contains("DefaultDevSolution", StringComparison.OrdinalIgnoreCase);
+                })
                 .ToList();
 
             foreach (var entry in managedZips)
@@ -183,12 +249,29 @@ public class PackageContentService : IPackageContentService
                 try
                 {
                     var modelName = PackageAnalyzer.ExtractModuleNameFromManagedZip(entry.Name);
+                    var containsLicenses = false;
+                    if (entry.Length > 0)
+                    {
+                        try
+                        {
+                            using var ms = new MemoryStream();
+                            using (var stream = entry.Open())
+                                stream.CopyTo(ms);
+                            ms.Position = 0;
+                            using var innerZip = new ZipArchive(ms, ZipArchiveMode.Read);
+                            containsLicenses = innerZip.Entries.Any(e =>
+                                e.FullName.Contains("/_License_", StringComparison.Ordinal)
+                                || e.FullName.Contains("\\_License_", StringComparison.Ordinal));
+                        }
+                        catch { /* skip if inner zip unreadable */ }
+                    }
                     var modelInfo = new ModelInfo
                     {
                         Name = modelName,
                         FileName = entry.Name,
                         SizeBytes = entry.Length,
-                        Publisher = "Unknown" // Unified packages don't typically have publisher info accessible easily
+                        Publisher = "Unknown",
+                        ContainsLicenses = containsLicenses
                     };
 
                     models.Add(modelInfo);

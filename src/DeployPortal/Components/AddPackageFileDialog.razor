@@ -1,0 +1,109 @@
+@using MudBlazor
+@inject DeployPortal.Services.PackageContent.IPackageModificationService ModificationService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(IsModel ? "Add model" : "Add license")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.body2">
+                @if (IsModel)
+                {
+                    @("Upload model archive (.zip). For LCS packages, a .nupkg will be generated automatically.")
+                }
+                else
+                {
+                    @("Select a .txt or .xml license file to add to the package.")
+                }
+            </MudText>
+            <MudFileUpload @ref="_fileUpload" T="IReadOnlyList<IBrowserFile>" FilesChanged="OnFilesChanged" Accept="@AcceptFilter" MaximumFileCount="1">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile"
+                               OnClick="OpenFilePickerAsync">
+                        @(IsModel ? "Choose .zip file" : "Choose license file")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+            @if (_files != null && _files.Count > 0)
+            {
+                <MudAlert Severity="Severity.Success" Dense="true">Selected: @_files[0].Name — click Add to upload.</MudAlert>
+            }
+            else
+            {
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Select a file above to enable the Add button.</MudText>
+            }
+            @if (_error != null)
+            {
+                <MudAlert Severity="Severity.Error" Dense="true">@_error</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="@(_busy || _files == null || _files.Count == 0)">
+            @(_busy ? "Adding…" : "Add")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int PackageId { get; set; }
+    [Parameter] public bool IsModel { get; set; }
+
+    private MudFileUpload<IReadOnlyList<IBrowserFile>>? _fileUpload;
+    private IReadOnlyList<IBrowserFile>? _files;
+    private string? _error;
+    private bool _busy;
+
+    private string AcceptFilter => IsModel ? ".zip" : ".txt,.xml";
+
+    private async Task OpenFilePickerAsync()
+    {
+        if (_fileUpload != null)
+            await _fileUpload.OpenFilePickerAsync();
+    }
+
+    private void OnFilesChanged(IReadOnlyList<IBrowserFile> files)
+    {
+        _files = files;
+        _error = null;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        if (_files == null || _files.Count == 0) return;
+        _error = null;
+        _busy = true;
+        var file = _files[0];
+        var tempPath = Path.Combine(Path.GetTempPath(), "DeployPortal_" + Guid.NewGuid().ToString("N")[..8] + Path.GetExtension(file.Name));
+        try
+        {
+            await using (var stream = file.OpenReadStream(maxAllowedSize: 512 * 1024 * 1024))
+            await using (var fs = File.Create(tempPath))
+                await stream.CopyToAsync(fs);
+
+            var (success, err) = IsModel
+                ? await ModificationService.AddModelAsync(PackageId, tempPath)
+                : await ModificationService.AddLicenseAsync(PackageId, tempPath);
+
+            if (success)
+                MudDialog.Close(DialogResult.Ok(true));
+            else
+                _error = err ?? "Operation failed.";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            if (File.Exists(tempPath))
+                try { File.Delete(tempPath); } catch { }
+        }
+    }
+}
