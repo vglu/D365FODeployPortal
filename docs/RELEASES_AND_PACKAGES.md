@@ -4,10 +4,10 @@ This repository is set up for **GitHub Releases** and publishing a **Docker imag
 
 ## How It Works
 
-When you push a tag matching `v*` (e.g. `v1.4.0`), the workflow [.github/workflows/release.yml](../.github/workflows/release.yml) runs:
+When you push a tag matching `v*` (e.g. `v1.5.0`), the workflow [.github/workflows/release.yml](../.github/workflows/release.yml) runs:
 
 1. **Windows build** — Publishes a self-contained app (win-x64) and packs it into a ZIP.
-2. **Docker build** — Builds the image and pushes it to **GitHub Container Registry** (`ghcr.io`).
+2. **Docker build** — Builds the image and pushes it to **GitHub Container Registry** (`ghcr.io`) and to **Docker Hub** (`vglu/d365fo-deploy-portal`). For Docker Hub, add repo secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
 3. **Release** — Creates a release on the Releases tab with the ZIP attached and body text from `RELEASE_NOTES_vX.Y.Z.md` (if the file exists).
 
 ## Creating a Release
