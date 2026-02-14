@@ -8,10 +8,10 @@
 
 ## 📊 ФАКТИЧЕСКИЕ ДАННЫЕ ИЗ БАЗЫ И ЛОГОВ
 
-### Deployment #1 (Merged_20260211_180432)
+### Deployment #1 (Merged_Example)
 **База данных говорит:**
-- EnvironmentId: 6 (Cst-hfx-tst-07)
-- Environment URL в БД: `cst-hfx-tst-07.crm.dynamics.com` ✅
+- EnvironmentId: 6 (Contoso-Test-07)
+- Environment URL в БД: `<target-env>.crm.dynamics.com` ✅
 - PackageId: 15
 - Status: 4 (Completed)
 - Started: 2026-02-11 18:06:41
@@ -20,16 +20,16 @@
 
 **Лог деплоймента показывает:**
 ```
-Deployment Target Organization ID: 9f9541eb-43e2-ef11-b8e4-6045bd003904
-Deployment Target Organization UniqueName: unq9f9541eb43e2ef11b8e46045bd003
-Deployment Target Organization Uri: https://c365afspmunified.crm.dynamics.com/ ❌❌❌
+Deployment Target Organization ID: <ORG_ID_A>
+Deployment Target Organization UniqueName: <UNIQUE_NAME_A>
+Deployment Target Organization Uri: https://<wrong-env>.crm.dynamics.com/ ❌❌❌
 Organization Version: 9.2.25123.166
 ```
 
-### Deployment #2 (Merged_20260211_180432 Unified)
+### Deployment #2 (Merged_Example Unified)
 **База данных говорит:**
-- EnvironmentId: 6 (Cst-hfx-tst-07)
-- Environment URL в БД: `cst-hfx-tst-07.crm.dynamics.com` ✅
+- EnvironmentId: 6 (Contoso-Test-07)
+- Environment URL в БД: `<target-env>.crm.dynamics.com` ✅
 - PackageId: 16
 - Status: 4 (Completed)
 - Started: 2026-02-11 21:12:30
@@ -38,18 +38,18 @@ Organization Version: 9.2.25123.166
 
 **Лог деплоймента показывает:**
 ```
-Deployment Target Organization ID: 9f9541eb-43e2-ef11-b8e4-6045bd003904
-Deployment Target Organization UniqueName: unq9f9541eb43e2ef11b8e46045bd003
-Deployment Target Organization Uri: https://c365afspmunified.crm.dynamics.com/ ❌❌❌
+Deployment Target Organization ID: <ORG_ID_A>
+Deployment Target Organization UniqueName: <UNIQUE_NAME_A>
+Deployment Target Organization Uri: https://<wrong-env>.crm.dynamics.com/ ❌❌❌
 Organization Version: 9.2.25123.166
 ```
 
 ### Эталонный P2 (правильный деплоймент)
 **Лог показывает:**
 ```
-Deployment Target Organization ID: ef7d39e4-66d2-f011-8729-000d3a33a003 ✅
-Deployment Target Organization UniqueName: unqef7d39e466d2f0118729000d3a33a ✅
-Deployment Target Organization Uri: https://cst-hfx-tst-07.crm.dynamics.com/ ✅
+Deployment Target Organization ID: <ORG_ID_B> ✅
+Deployment Target Organization UniqueName: <UNIQUE_NAME_B> ✅
+Deployment Target Organization Uri: https://<target-env>.crm.dynamics.com/ ✅
 Organization Version: 9.2.26014.142
 ```
 
@@ -59,8 +59,8 @@ Organization Version: 9.2.26014.142
 
 | Параметр | Деплойменты #1 & #2 | Эталонный P2 | Совпадает? |
 |----------|---------------------|--------------|------------|
-| Organization ID | `9f9541eb-43e2-ef11-b8e4-6045bd003904` | `ef7d39e4-66d2-f011-8729-000d3a33a003` | ❌ НЕТ |
-| Organization URL | `c365afspmunified.crm.dynamics.com` | `cst-hfx-tst-07.crm.dynamics.com` | ❌ НЕТ |
+| Organization ID | `<ORG_ID_A>` | `<ORG_ID_B>` | ❌ НЕТ |
+| Organization URL | `<wrong-env>.crm.dynamics.com` | `<target-env>.crm.dynamics.com` | ❌ НЕТ |
 | Org Version | 9.2.25123.166 | 9.2.26014.142 | ❌ НЕТ |
 
 **ВЫВОД: Это РАЗНЫЕ энвайронменты!**
@@ -69,14 +69,14 @@ Organization Version: 9.2.26014.142
 
 ## 🤔 ПОЧЕМУ ЭТО ПРОИЗОШЛО?
 
-### Данные из базы Environment #6 (Cst-hfx-tst-07):
+### Данные из базы Environment #6 (Contoso-Test-07):
 ```
 Id: 6
-Name: Cst-hfx-tst-07
-Url: cst-hfx-tst-07.crm.dynamics.com
-TenantId: 77d6f5ce-824c-4d27-a315-4988ab78abb4
-ApplicationId: cf5dcf5f-69fe-4855-b968-8c17c9c79030 ✅
-ClientSecretEncrypted: CfDJ8PDETcEeYfVHteRH-3Bh6Qe8PJw... (есть) ✅
+Name: Contoso-Test-07
+Url: <target-env>.crm.dynamics.com
+TenantId: <TENANT_ID>
+ApplicationId: <APPLICATION_ID> ✅
+ClientSecretEncrypted: <encrypted> (есть) ✅
 IsActive: 1
 ```
 
@@ -87,13 +87,13 @@ IsActive: 1
 ### Возможные причины:
 
 1. **Service Principal имеет доступ к НЕСКОЛЬКИМ энвайронментам**
-   - ApplicationId `cf5dcf5f-69fe-4855-b968-8c17c9c79030` зарегистрирован в Azure AD
+   - ApplicationId `<APPLICATION_ID>` зарегистрирован в Azure AD
    - Этот SP имеет права доступа к обоим энвайронментам:
-     - `c365afspmunified.crm.dynamics.com`
-     - `cst-hfx-tst-07.crm.dynamics.com`
+     - `<wrong-env>.crm.dynamics.com`
+     - `<target-env>.crm.dynamics.com`
    
 2. **PAC CLI выбрал не тот энвайронмент**
-   - При команде `pac auth create --environment "cst-hfx-tst-07.crm.dynamics.com"` PAC CLI подключился
+   - При команде `pac auth create --environment "<target-env>.crm.dynamics.com"` PAC CLI подключился
    - Но по какой-то причине фактически выбрал другой энвайронмент
    
 3. **Кеширование аутентификации**
@@ -104,23 +104,23 @@ IsActive: 1
 
 ## 📋 ЧТО БЫЛО В ПАКЕТАХ
 
-### Package #15 (Merged_20260211_180432)
+### Package #15 (Merged_Example)
 ```
 Type: Merged
-File: 20260211_180437_Merged_20260211_180432.zip
+File: 20260211_180437_Merged_Example.zip
 Size: 57,688,743 bytes (55 MB)
-Parent: Package #11 (AXDeployablePackagePCM_2026.2.11.1)
+Parent: Package #11 (MyDeployablePackage_1.0.0.0)
 Merged from: 
-  - AXDeployablePackagePCM_2026.2.11.1 (LCS)
+  - MyDeployablePackage_1.0.0.0 (LCS)
   - AXDeployablePackageAL_2026.2.11.1 (LCS)
   - AXDeployablePackageAFSPM_2026.2.11.1 (LCS)
 Uploaded: 2026-02-11 18:04:39
 ```
 
-### Package #16 (Merged_20260211_180432 Unified)
+### Package #16 (Merged_Example Unified)
 ```
 Type: Unified
-File: 20260211_211216_Merged_20260211_180432_Unified.zip
+File: 20260211_211216_Merged_Example_Unified.zip
 Size: неизвестно (пакет удален)
 Source: конвертирован из Package #15
 Uploaded: 2026-02-11 21:12:17
@@ -175,7 +175,7 @@ await RunPacCommandAsync("auth who", onLog);
 
 ## 🎯 НЕМЕДЛЕННЫЕ ДЕЙСТВИЯ
 
-1. ✅ Проверьте в Azure Portal права Service Principal `cf5dcf5f-69fe-4855-b968-8c17c9c79030`
+1. ✅ Проверьте в Azure Portal права Service Principal `<APPLICATION_ID>`
    - К каким энвайронментам он имеет доступ?
    - Возможно нужен отдельный SP для каждого энвайронмента
 

@@ -35,8 +35,8 @@ public class PreDeployAuthValidator : IDeploymentValidator
         // This works for Service Principal authentication
         var urlMatch = whoOutputLower.Contains(expectedUrl);
 
-        // Check 2: Try to match by Organization Friendly Name (e.g., "CST-HFX-TST-07")
-        // Example line: "Organization Friendly Name: CST-HFX-TST-07"
+        // Check 2: Try to match by Organization Friendly Name (e.g., "Contoso-Test-01")
+        // Example line: "Organization Friendly Name: Contoso-Test-01"
         var friendlyNameMatch = whoOutputLower.Contains($"organization friendly name: {expectedName}") ||
                                 whoOutputLower.Contains($"organization: {expectedName}") ||
                                 whoOutputLower.Contains($"default organization: {expectedName}");

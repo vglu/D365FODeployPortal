@@ -16,13 +16,13 @@
 
 ### Шаги в Azure DevOps
 
-1. **Pipelines → Releases** → выберите нужное определение (например, ClientSTeam-HFX-supporttest01).
+1. **Pipelines → Releases** → выберите нужное определение (например, MyReleaseDefinition).
 2. **Edit** → вкладка **Artifacts** → **Add** (Добавить артефакт).
 3. **Source type:** выберите **Azure Artifacts**.
 4. Заполните:
    - **Feed\***: `PPackages` (или ваш фид).
    - **Package type:** `Universal`.
-   - **Package\***: выберите пакет из списка (например, `axdeployablepackagepcm_2026.2.11.1` — имя в lowercase).
+   - **Package\***: выберите пакет из списка (например, `mydeployablepackage_1.0.0.0` — имя в lowercase).
    - **Default version:** **Specify at the time of release creation** (указывать при создании релиза).
    - **Source alias\***: например `_universal-package` или `_upack` (этот alias нужно будет выбирать в Deploy Portal).
 5. **Add** → **Save** определение.
@@ -66,7 +66,7 @@
 ### Пример с явными параметрами
 
 ```powershell
-.\scripts\upload-universal-package-from-portal.ps1 -Feed PPackages -PackagePath "C:\DeployPortal\Packages\package.zip" -PackageName "AXDeployablePackagePCM_2026.2.11.1" -Version "1.0.1234567890" -Pat "ваш_PAT"
+.\scripts\upload-universal-package-from-portal.ps1 -Feed PPackages -PackagePath "C:\Packages\package.zip" -PackageName "MyDeployablePackage_1.0.0.0" -Version "1.0.1234567890" -Pat "ваш_PAT"
 ```
 
 ### Загрузка и запуск релиза (создание release после publish)
@@ -87,7 +87,7 @@
 
 ### Требования к имени пакета
 
-Azure Artifacts Universal принимает только **lowercase**. Портал и скрипт автоматически приводят имя к нижнему регистру при публикации (в определении релиза и в фиде пакет будет отображаться как `axdeployablepackagepcm_2026.2.11.1` и т.п.).
+Azure Artifacts Universal принимает только **lowercase**. Портал и скрипт автоматически приводят имя к нижнему регистру при публикации (в определении релиза и в фиде пакет будет отображаться как `mydeployablepackage_1.0.0.0` и т.п.).
 
 ---
 

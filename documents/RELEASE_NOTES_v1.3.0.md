@@ -137,9 +137,9 @@ docker run -d --name deploy-portal \
 ## 📚 Документация
 
 Новая документация:
-- `docs/SOLID_REFACTORING_COMPLETE.md` — итоговый отчёт рефакторинга
-- `docs/TWO_LEVEL_VALIDATION.md` — description of CHECK 1 + CHECK 2
-- `docs/DOCKER_COMPATIBILITY.md` — совместимость с Docker
+- `SOLID_REFACTORING_COMPLETE.md` — итоговый отчёт рефакторинга
+- `TWO_LEVEL_VALIDATION.md` — description of CHECK 1 + CHECK 2
+- `DOCKER_COMPATIBILITY.md` — совместимость с Docker
 
 ---
 

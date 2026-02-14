@@ -25,7 +25,7 @@
 
 ### Документация
 
-- **`docs/TESTING_AND_QUALITY.md`** — описание покрытия тестами, рекомендации по SOLID, инструкции по запуску unit/E2E и покрытию (coverlet).
+- **`TESTING_AND_QUALITY.md`** — описание покрытия тестами, рекомендации по SOLID, инструкции по запуску unit/E2E и покрытию (coverlet).
 - **`coverlet.runsettings`** — настройки сбора покрытия для DeployPortal и DeployPortal.PackageOps.
 
 ---
@@ -89,4 +89,4 @@ docker pull vglu/d365fo-deploy-portal:latest
 
 ## 📞 Support
 
-If you encounter any issues, please check the [documentation](docs/) or contact: [vhlu@sims-service.com](mailto:vhlu@sims-service.com) — [Sims Tech](https://sims-service.com/)
+If you encounter any issues, please check the [documentation](.) or contact: [vhlu@sims-service.com](mailto:vhlu@sims-service.com) — [Sims Tech](https://sims-service.com/)

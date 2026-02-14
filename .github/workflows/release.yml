@@ -4,7 +4,7 @@
 # - Trigger: push tag v* (e.g. v1.5.0)
 # - Builds Windows self-contained zip and publishes to GitHub Release
 # - Builds Docker image: pushes to GHCR (ghcr.io) and Docker Hub (if secrets set)
-# - Repo secrets for Docker Hub: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN
+# - Docker Hub push: set repo secrets DOCKERHUB_USERNAME, DOCKERHUB_TOKEN (job runs always; if missing, job fails but workflow continues)
 # ============================================================
 
 name: Release and Package
@@ -43,8 +43,8 @@ jobs:
             --runtime win-x64 `
             --self-contained true `
             --output $outDir
-          Copy-Item Setup-ServicePrincipal.ps1, Setup-ServicePrincipal-Manual.md, check-prerequisites.ps1 -Destination $outDir -ErrorAction SilentlyContinue
-          if (Test-Path publish-README.md) { Copy-Item publish-README.md $outDir\README.md }
+          Copy-Item Setup-ServicePrincipal.ps1, documents/Setup-ServicePrincipal-Manual.md, check-prerequisites.ps1 -Destination $outDir -ErrorAction SilentlyContinue
+          if (Test-Path documents/publish-README.md) { Copy-Item documents/publish-README.md $outDir\README.md }
           Set-Content -Path (Join-Path $outDir "start.cmd") -Value "@echo off","echo Starting DeployPortal...","start http://localhost:5000","DeployPortal.exe --urls `"http://localhost:5000`"" -Encoding ASCII
           echo "OUT_DIR=$outDir" >> $env:GITHUB_ENV
 
@@ -101,7 +101,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ---- Optional: push same image to Docker Hub. Set DOCKERHUB_USERNAME + DOCKERHUB_TOKEN or job is skipped (continue-on-error). ----
+  # ---- Push same image to Docker Hub. Set DOCKERHUB_USERNAME + DOCKERHUB_TOKEN in repo secrets. If not set, job fails but workflow continues (continue-on-error). ----
   push-dockerhub:
     needs: [build-docker]
     runs-on: ubuntu-latest
@@ -146,7 +146,7 @@ jobs:
 
       - name: Prepare release notes file
         run: |
-          NOTES_FILE="RELEASE_NOTES_v${{ steps.ver.outputs.VERSION }}.md"
+          NOTES_FILE="documents/RELEASE_NOTES_v${{ steps.ver.outputs.VERSION }}.md"
           if [ -f "$NOTES_FILE" ]; then
             cp "$NOTES_FILE" release_body.md
           else

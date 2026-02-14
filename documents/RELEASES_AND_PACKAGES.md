@@ -7,13 +7,13 @@ This repository is set up for **GitHub Releases** and publishing a **Docker imag
 When you push a tag matching `v*` (e.g. `v1.5.0`), the workflow [.github/workflows/release.yml](../.github/workflows/release.yml) runs:
 
 1. **Windows build** — Publishes a self-contained app (win-x64) and packs it into a ZIP.
-2. **Docker build** — Builds the image and pushes it to **GitHub Container Registry** (`ghcr.io`) and to **Docker Hub** (`vglu/d365fo-deploy-portal`). For Docker Hub, add repo secrets: `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`.
-3. **Release** — Creates a release on the Releases tab with the ZIP attached and body text from `RELEASE_NOTES_vX.Y.Z.md` (if the file exists).
+2. **Docker build** — Builds the image and pushes it to **GitHub Container Registry** (`ghcr.io`). To also push to **Docker Hub** (`vglu/d365fo-deploy-portal`): in **Settings → Secrets and variables → Actions** add secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`. If these secrets are not set, the Docker Hub job fails but the workflow continues (release and GHCR are unaffected).
+3. **Release** — Creates a release on the Releases tab with the ZIP attached and body text from `documents/RELEASE_NOTES_vX.Y.Z.md` (if the file exists).
 
 ## Creating a Release
 
 1. Ensure the version in `src/DeployPortal/DeployPortal.csproj` matches the tag you plan to use (e.g. `1.4.0`).
-2. Create or update the release notes file: `RELEASE_NOTES_v1.4.0.md`.
+2. Create or update the release notes file: `documents/RELEASE_NOTES_v1.4.0.md`.
 3. Commit and push your changes.
 4. Create and push the tag:
 
@@ -30,7 +30,7 @@ When you push a tag matching `v*` (e.g. `v1.5.0`), the workflow [.github/workflo
 
 - Page: `https://github.com/vglu/D365FODeployPortal/releases`
 - Each release includes an archive: `DeployPortal-<version>-win-x64.zip` (extract and run `start.cmd` or `DeployPortal.exe`).
-- Release body is taken from `RELEASE_NOTES_v<version>.md`; if the file is missing, a short default description is used.
+- Release body is taken from `documents/RELEASE_NOTES_v<version>.md`; if the file is missing, a short default description is used.
 
 ## Packages (Docker on GHCR)
 
@@ -62,7 +62,7 @@ If you need to create the very first release by hand (without a tag):
 1. Go to **Releases** → **Create a new release**.
 2. Choose a tag (create e.g. `v1.4.0`) or an existing commit.
 3. Set the title, e.g. `v1.4.0`.
-4. Paste the contents of `RELEASE_NOTES_v1.4.0.md` into the description.
+4. Paste the contents of `documents/RELEASE_NOTES_v1.4.0.md` into the description.
 5. Attach the ZIP manually (build with `.\publish.ps1` and zip the `publish/` folder).
 
 For subsequent releases, using tags and the automated workflow is recommended.
