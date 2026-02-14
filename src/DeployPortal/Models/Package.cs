@@ -45,5 +45,15 @@ public class Package
     [MaxLength(4000)]
     public string? LicenseFileNames { get; set; }
 
+    /// <summary>
+    /// When true, package is archived and shown only in the Archive tab.
+    /// </summary>
+    public bool IsArchived { get; set; } = false;
+
+    /// <summary>
+    /// When the package was archived.
+    /// </summary>
+    public DateTime? ArchivedAt { get; set; }
+
     public ICollection<Deployment> Deployments { get; set; } = new List<Deployment>();
 }

@@ -6,12 +6,12 @@ namespace DeployPortal.Services;
 /// </summary>
 public class CompositeConvertService : IConvertService
 {
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly BuiltInConvertService _builtIn;
     private readonly ConvertService _modelUtil;
 
     public CompositeConvertService(
-        SettingsService settings,
+        ISettingsService settings,
         BuiltInConvertService builtIn,
         ConvertService modelUtil)
     {

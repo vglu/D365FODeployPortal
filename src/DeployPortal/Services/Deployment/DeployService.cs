@@ -15,7 +15,7 @@ public class DeployService : IDeployService
     private readonly IPacDeploymentService _deploymentService;
     private readonly IIsolatedDirectoryManager _directoryManager;
     private readonly IEnumerable<IDeploymentValidator> _validators;
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly ILogger<DeployService> _logger;
 
     public DeployService(
@@ -23,7 +23,7 @@ public class DeployService : IDeployService
         IPacDeploymentService deploymentService,
         IIsolatedDirectoryManager directoryManager,
         IEnumerable<IDeploymentValidator> validators,
-        SettingsService settings,
+        ISettingsService settings,
         ILogger<DeployService> logger)
     {
         _authService = authService ?? throw new ArgumentNullException(nameof(authService));

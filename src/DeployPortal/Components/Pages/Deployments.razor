@@ -47,8 +47,16 @@
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="ID">@context.Id</MudTd>
-                <MudTd DataLabel="Package">@context.Package.Name</MudTd>
-                <MudTd DataLabel="Environment">@context.Environment.Name</MudTd>
+                <MudTd DataLabel="Package">
+                    <MudLink Href="@($"/packages/{context.Package.Id}/details")" Typo="Typo.body2" Class="cursor-pointer">
+                        @context.Package.Name
+                    </MudLink>
+                </MudTd>
+                <MudTd DataLabel="Environment">
+                    <MudLink Href="/environments" Typo="Typo.body2" Class="cursor-pointer">
+                        @context.Environment.Name
+                    </MudLink>
+                </MudTd>
                 <MudTd DataLabel="Status">
                     <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
                         @context.Status
@@ -125,8 +133,16 @@
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="ID">@context.Id</MudTd>
-                <MudTd DataLabel="Package">@context.Package.Name</MudTd>
-                <MudTd DataLabel="Environment">@context.Environment.Name</MudTd>
+                <MudTd DataLabel="Package">
+                    <MudLink Href="@($"/packages/{context.Package.Id}/details")" Typo="Typo.body2" Class="cursor-pointer">
+                        @context.Package.Name
+                    </MudLink>
+                </MudTd>
+                <MudTd DataLabel="Environment">
+                    <MudLink Href="/environments" Typo="Typo.body2" Class="cursor-pointer">
+                        @context.Environment.Name
+                    </MudLink>
+                </MudTd>
                 <MudTd DataLabel="Status">
                     <MudChip T="string" Size="Size.Small" Color="@GetStatusColor(context.Status)">
                         @context.Status

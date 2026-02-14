@@ -7,7 +7,7 @@ namespace DeployPortal.Services;
 /// Settings are persisted to a JSON file in LocalApplicationData so they survive rebuilds and clean.
 /// On read, user settings override appsettings.json values.
 /// </summary>
-public class SettingsService
+public class SettingsService : ISettingsService
 {
     private readonly IConfiguration _config;
     private readonly IWebHostEnvironment _env;

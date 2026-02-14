@@ -7,12 +7,12 @@ namespace DeployPortal.Services.Deployment.PacCli;
 public class PacDeploymentService : IPacDeploymentService
 {
     private readonly IPacCliExecutor _pacExecutor;
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly ILogger<PacDeploymentService> _logger;
 
     public PacDeploymentService(
         IPacCliExecutor pacExecutor,
-        SettingsService settings,
+        ISettingsService settings,
         ILogger<PacDeploymentService> logger)
     {
         _pacExecutor = pacExecutor ?? throw new ArgumentNullException(nameof(pacExecutor));

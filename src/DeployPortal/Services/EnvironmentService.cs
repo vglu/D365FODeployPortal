@@ -7,12 +7,12 @@ namespace DeployPortal.Services;
 public class EnvironmentService
 {
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
-    private readonly SecretProtectionService _secretService;
+    private readonly ISecretProtectionService _secretService;
     private readonly ILogger<EnvironmentService> _logger;
 
     public EnvironmentService(
         IDbContextFactory<AppDbContext> dbFactory,
-        SecretProtectionService secretService,
+        ISecretProtectionService secretService,
         ILogger<EnvironmentService> logger)
     {
         _dbFactory = dbFactory;
@@ -155,7 +155,7 @@ public class EnvironmentService
         try
         {
             var decrypted = _secretService.Decrypt(env.ClientSecretEncrypted);
-            return SecretProtectionService.MaskSecret(decrypted);
+            return _secretService.MaskSecret(decrypted);
         }
         catch
         {

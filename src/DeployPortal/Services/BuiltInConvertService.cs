@@ -9,9 +9,9 @@ namespace DeployPortal.Services;
 public class BuiltInConvertService : IConvertService
 {
     private readonly ILogger<BuiltInConvertService> _logger;
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
 
-    public BuiltInConvertService(SettingsService settings, ILogger<BuiltInConvertService> logger)
+    public BuiltInConvertService(ISettingsService settings, ILogger<BuiltInConvertService> logger)
     {
         _settings = settings;
         _logger = logger;

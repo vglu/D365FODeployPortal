@@ -2,8 +2,8 @@
 @inject PackageService PkgService
 @inject EnvironmentService EnvService
 @inject DeploymentOrchestrator Orchestrator
-@inject SettingsService SettingsSvc
-@inject SecretProtectionService SecretSvc
+@inject ISettingsService SettingsSvc
+@inject ISecretProtectionService SecretSvc
 @inject AzureDevOpsReleaseService ReleaseService
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -462,7 +462,7 @@
         _showReleasePatField = false;
         try
         {
-            _savedReleasePatMasked = _hasSavedReleasePat ? SecretProtectionService.MaskSecret(SecretSvc.Decrypt(SettingsSvc.AzureDevOpsPatEncrypted)) : "";
+            _savedReleasePatMasked = _hasSavedReleasePat ? SecretSvc.MaskSecret(SecretSvc.Decrypt(SettingsSvc.AzureDevOpsPatEncrypted)) : "";
         }
         catch { _savedReleasePatMasked = "****"; }
         _releaseDialogOpen = true;

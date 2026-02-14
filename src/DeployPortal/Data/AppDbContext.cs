@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<Package> Packages => Set<Package>();
     public DbSet<Deployment> Deployments => Set<Deployment>();
     public DbSet<DeploymentLog> DeploymentLogs => Set<DeploymentLog>();
+    public DbSet<PackageChangeLog> PackageChangeLogs => Set<PackageChangeLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -52,6 +53,17 @@ public class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
 
             entity.HasIndex(l => l.DeploymentId);
+        });
+
+        modelBuilder.Entity<PackageChangeLog>(entity =>
+        {
+            entity.HasOne(c => c.Package)
+                .WithMany()
+                .HasForeignKey(c => c.PackageId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(c => c.PackageId);
+            entity.HasIndex(c => c.ChangedAt);
         });
     }
 }

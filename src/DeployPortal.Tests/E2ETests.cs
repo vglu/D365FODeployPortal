@@ -396,6 +396,30 @@ public class E2ETests
     }
 
     [Test, Order(8)]
+    public async Task PackageDetails_Navigate_ShowsModelsLicensesChangelogTabs()
+    {
+        await _page!.GotoAsync($"{BaseUrl}/packages", new() { WaitUntil = WaitUntilState.NetworkIdle });
+        await WaitForBlazor();
+        await Task.Delay(1000);
+
+        var detailsLinks = _page.Locator("a[href*='/details']");
+        if (await detailsLinks.CountAsync() == 0)
+        {
+            Assert.Warn("No package details link found (upload a package first). Skipping PackageDetails tab check.");
+            return;
+        }
+        await detailsLinks.First.ClickAsync();
+        await Task.Delay(2000);
+        await WaitForBlazor();
+        await TakeScreenshot("08_package_details");
+
+        var content = await _page.ContentAsync();
+        Assert.That(content, Does.Contain("Models").Or.Contain("D365FO models"), "Details page should show Models tab or label");
+        Assert.That(content, Does.Contain("Licenses"), "Details page should show Licenses tab");
+        Assert.That(content, Does.Contain("Changelog"), "Details page should show Changelog tab");
+    }
+
+    [Test, Order(9)]
     public async Task SideNavigation_Works()
     {
         await _page!.GotoAsync(BaseUrl, new() { WaitUntil = WaitUntilState.NetworkIdle });
@@ -423,7 +447,7 @@ public class E2ETests
         Assert.That(_page.Url, Does.Contain("/settings"));
     }
 
-    [Test, Order(9)]
+    [Test, Order(10)]
     public async Task DarkMode_Toggle_Works()
     {
         await _page!.GotoAsync(BaseUrl, new() { WaitUntil = WaitUntilState.NetworkIdle });
@@ -441,7 +465,7 @@ public class E2ETests
         Assert.That(content, Does.Contain("Dashboard"), "Page should still work after dark mode toggle");
     }
 
-    [Test, Order(10)]
+    [Test, Order(11)]
     public async Task Environments_ImportFromScript_ParsesAndCreates()
     {
         await _page!.GotoAsync($"{BaseUrl}/environments", new() { WaitUntil = WaitUntilState.NetworkIdle });
@@ -505,7 +529,7 @@ public class E2ETests
         }
     }
 
-    [Test, Order(11)]
+    [Test, Order(12)]
     public async Task NoConsoleErrors_OnPageLoad()
     {
         var errors = new List<string>();

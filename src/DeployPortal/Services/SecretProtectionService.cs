@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.DataProtection;
 
 namespace DeployPortal.Services;
 
-public class SecretProtectionService
+public class SecretProtectionService : ISecretProtectionService
 {
     private readonly IDataProtector _protector;
 
@@ -27,7 +27,10 @@ public class SecretProtectionService
         return _protector.Unprotect(cipherText);
     }
 
-    public static string MaskSecret(string secret)
+    public string MaskSecret(string secret) => MaskSecretCore(secret);
+
+    /// <summary>Static helper for callers that only need masking (e.g. UI).</summary>
+    public static string MaskSecretCore(string secret)
     {
         if (string.IsNullOrEmpty(secret) || secret.Length <= 4)
             return "****";

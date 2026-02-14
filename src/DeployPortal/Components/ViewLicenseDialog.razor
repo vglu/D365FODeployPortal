@@ -1,0 +1,136 @@
+@using System.Text
+@using System.Xml.Linq
+@using MudBlazor
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@Title</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudPaper Class="license-viewer-paper" Elevation="0" Outlined="true">
+            <pre class="license-viewer-code"><code>@_displayContent</code></pre>
+        </MudPaper>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="CopyToClipboard" StartIcon="@Icons.Material.Filled.ContentCopy">Copy to clipboard</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string Title { get; set; } = "License";
+    [Parameter] public string ContentText { get; set; } = "";
+    /// <summary>When true, content is formatted as pretty-printed XML.</summary>
+    [Parameter] public bool IsXml { get; set; }
+
+    private string _displayContent = "";
+    private string _content = "";
+
+    protected override void OnParametersSet()
+    {
+        _content = NormalizeContent(ContentText ?? "");
+        var treatAsXml = IsXml || LooksLikeXml(_content);
+        _displayContent = treatAsXml ? TryFormatXml(_content) : _content;
+        StateHasChanged();
+    }
+
+    /// <summary>Strip BOM and normalize so XML detection and parsing work.</summary>
+    private static string NormalizeContent(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return content;
+        return content.TrimStart('\uFEFF').Trim();
+    }
+
+    /// <summary>Detects XML by content so .txt files with XML are also formatted.</summary>
+    private static bool LooksLikeXml(string content)
+    {
+        if (string.IsNullOrEmpty(content) || content.Length < 5) return false;
+        var span = content.AsSpan().Trim();
+        if (span.Length < 5) return false;
+        if (span.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase)) return true;
+        if (span[0] == '<' && span.IndexOf('>') > 0) return true;
+        return false;
+    }
+
+    private const int AttributeValueWrapLength = 80;
+
+    private static string TryFormatXml(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return raw;
+        var normalized = raw.TrimStart('\uFEFF').Trim();
+        if (string.IsNullOrEmpty(normalized)) return raw;
+        try
+        {
+            var doc = XDocument.Parse(normalized);
+            return BuildFormattedLicenseXml(doc);
+        }
+        catch
+        {
+            return raw;
+        }
+    }
+
+    /// <summary>
+    /// Builds XML in the exact display format: declaration, then &lt;License with one attribute per line, long values wrapped.
+    /// </summary>
+    private static string BuildFormattedLicenseXml(XDocument doc)
+    {
+        var sb = new StringBuilder();
+        if (doc.Declaration != null)
+        {
+            sb.Append("<?xml version=\"");
+            sb.Append(doc.Declaration.Version ?? "1.0");
+            sb.Append("\" encoding=\"");
+            sb.Append(doc.Declaration.Encoding ?? "utf-8");
+            sb.AppendLine("\"?>");
+        }
+        var root = doc.Root;
+        if (root == null) return doc.ToString();
+        sb.Append("<");
+        sb.Append(root.Name.LocalName);
+        var indent = "  ";
+        foreach (var a in root.Attributes())
+        {
+            sb.AppendLine();
+            sb.Append(indent);
+            sb.Append(a.Name.LocalName);
+            sb.Append("=\"");
+            var val = a.Value;
+            if (val.Length > AttributeValueWrapLength)
+            {
+                for (int i = 0; i < val.Length; i += AttributeValueWrapLength)
+                {
+                    if (i > 0) sb.Append("\n  ");
+                    var len = Math.Min(AttributeValueWrapLength, val.Length - i);
+                    sb.Append(val.Substring(i, len));
+                }
+            }
+            else
+                sb.Append(val);
+            sb.Append("\"");
+        }
+        if (root.IsEmpty || (!root.HasElements && !root.Nodes().Any()))
+            sb.AppendLine(" />");
+        else
+            sb.AppendLine(">");
+        return sb.ToString();
+    }
+
+    private async Task CopyToClipboard()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("copyToClipboard", _displayContent);
+            Snackbar.Add("Copied to clipboard", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy. Select and copy manually.", Severity.Warning);
+        }
+    }
+
+    private void Close() => MudDialog.Close();
+}

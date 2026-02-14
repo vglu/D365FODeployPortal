@@ -13,10 +13,10 @@ namespace DeployPortal.Services;
 public class MergeService
 {
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly ILogger<MergeService> _logger;
 
-    public MergeService(IDbContextFactory<AppDbContext> dbFactory, SettingsService settings, ILogger<MergeService> logger)
+    public MergeService(IDbContextFactory<AppDbContext> dbFactory, ISettingsService settings, ILogger<MergeService> logger)
     {
         _dbFactory = dbFactory;
         _settings = settings;
