@@ -279,6 +279,40 @@ public class UnitTests
         Assert.That(pkg, Is.Not.Null);
         Assert.That(pkg!.LicenseFileNames, Is.Not.Null.And.Contains("MyLicense.txt"));
     }
+
+    [Test]
+    public async Task UpdatePackageAsync_LogsNameAndTicketUrlChanges_ToChangeLog()
+    {
+        var packagesDir = Path.Combine(_testDir, "packages");
+        Directory.CreateDirectory(packagesDir);
+        var zipPath = Path.Combine(packagesDir, "pkg.zip");
+        File.WriteAllText(zipPath, "dummy");
+
+        await using (var db = await _dbFactory.CreateDbContextAsync())
+        {
+            db.Packages.Add(new Package
+            {
+                Id = 1,
+                Name = "OldName",
+                OriginalFileName = "pkg.zip",
+                StoredFilePath = zipPath,
+                PackageType = "LCS",
+                UploadedAt = DateTime.UtcNow,
+                DevOpsTaskUrl = "https://old.url"
+            });
+            await db.SaveChangesAsync();
+        }
+
+        var logger = new Mock<ILogger<PackageService>>();
+        var changeLogMock = new Mock<DeployPortal.Services.PackageContent.IPackageChangeLogService>();
+        changeLogMock.Setup(c => c.LogChangeAsync(It.IsAny<int>(), It.IsAny<PackageChangeType>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<string?>())).Returns(Task.CompletedTask);
+
+        var svc = new PackageService(_dbFactory, _settings, _convertMock.Object, changeLogMock.Object, logger.Object);
+        await svc.UpdatePackageAsync(1, "NewName", "https://new.url", "test-user");
+
+        changeLogMock.Verify(c => c.LogChangeAsync(1, PackageChangeType.Updated, "Name", "NewName", "Previous: OldName", "test-user"), Times.Once);
+        changeLogMock.Verify(c => c.LogChangeAsync(1, PackageChangeType.Updated, "TicketUrl", "https://new.url", "Previous: https://old.url", "test-user"), Times.Once);
+    }
 }
 
 /// <summary>

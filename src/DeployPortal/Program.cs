@@ -108,10 +108,10 @@ try
         .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysDir));
 
     // Settings service (singleton — reads/writes config file)
-    builder.Services.AddSingleton<SettingsService>();
+    builder.Services.AddSingleton<ISettingsService, SettingsService>();
 
     // Services — all scoped to avoid lifecycle issues
-    builder.Services.AddScoped<SecretProtectionService>();
+    builder.Services.AddScoped<ISecretProtectionService, SecretProtectionService>();
     builder.Services.AddScoped<EnvironmentService>();
     builder.Services.AddScoped<PackageService>();
     builder.Services.AddScoped<IPackageContentService, PackageContentService>();
@@ -125,7 +125,7 @@ try
     // Deployment services (refactored to follow SOLID principles)
     builder.Services.AddScoped<IPacCliExecutor>(sp =>
     {
-        var settings = sp.GetRequiredService<SettingsService>();
+        var settings = sp.GetRequiredService<ISettingsService>();
         var logger = sp.GetRequiredService<ILogger<PacCliExecutor>>();
         var pacCliPath = settings.GetEffectivePacPath();
         return new PacCliExecutor(pacCliPath, logger);
@@ -149,7 +149,7 @@ try
     // IPackageOpsService — switches between Local and Azure based on Settings → ProcessingMode
     builder.Services.AddScoped<IPackageOpsService>(sp =>
     {
-        var settings = sp.GetRequiredService<SettingsService>();
+        var settings = sp.GetRequiredService<ISettingsService>();
         if (settings.ProcessingMode.Equals("Azure", StringComparison.OrdinalIgnoreCase))
         {
             return new AzurePackageOpsService(
@@ -339,7 +339,7 @@ try
     .Produces<PackageDto>(200).Produces(404);
 
     // Release pipeline params (org, project, feed, latest package path/name) for scripts
-    api.MapGet("/release-params", async (SettingsService settings, IDbContextFactory<AppDbContext> dbFactory) =>
+    api.MapGet("/release-params", async (ISettingsService settings, IDbContextFactory<AppDbContext> dbFactory) =>
     {
         var org = settings.AzureDevOpsOrganization ?? "";
         var project = settings.AzureDevOpsProject ?? "";

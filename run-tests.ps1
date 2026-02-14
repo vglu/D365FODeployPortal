@@ -18,6 +18,10 @@ $args = @(
 )
 if ($Coverage) {
     $args += @("--collect:`"XPlat Code Coverage`"", "--results-directory", "TestResults")
+    $runsettings = Join-Path $PSScriptRoot "coverlet.runsettings"
+    if (Test-Path $runsettings) {
+        $args += @("--settings", $runsettings)
+    }
 }
 
 & dotnet @args

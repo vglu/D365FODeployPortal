@@ -6,10 +6,10 @@ namespace DeployPortal.Services.Deployment.Isolation;
 /// </summary>
 public class IsolatedDirectoryManager : IIsolatedDirectoryManager
 {
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly ILogger<IsolatedDirectoryManager> _logger;
 
-    public IsolatedDirectoryManager(SettingsService settings, ILogger<IsolatedDirectoryManager> logger)
+    public IsolatedDirectoryManager(ISettingsService settings, ILogger<IsolatedDirectoryManager> logger)
     {
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));

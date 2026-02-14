@@ -58,7 +58,7 @@ public class DeploymentOrchestrator : BackgroundService
         var deployService = scope.ServiceProvider.GetRequiredService<IDeployService>();
         var directoryManager = scope.ServiceProvider.GetRequiredService<IIsolatedDirectoryManager>();
         var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<DeployLogHub>>();
-        var settingsService = scope.ServiceProvider.GetRequiredService<SettingsService>();
+        var settingsService = scope.ServiceProvider.GetRequiredService<ISettingsService>();
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         var deployment = await db.Deployments

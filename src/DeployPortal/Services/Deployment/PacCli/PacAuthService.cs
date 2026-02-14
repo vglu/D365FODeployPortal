@@ -7,14 +7,14 @@ namespace DeployPortal.Services.Deployment.PacCli;
 public class PacAuthService : IPacAuthService
 {
     private readonly IPacCliExecutor _pacExecutor;
-    private readonly SecretProtectionService _secretService;
-    private readonly SettingsService _settings;
+    private readonly ISecretProtectionService _secretService;
+    private readonly ISettingsService _settings;
     private readonly ILogger<PacAuthService> _logger;
 
     public PacAuthService(
         IPacCliExecutor pacExecutor,
-        SecretProtectionService secretService,
-        SettingsService settings,
+        ISecretProtectionService secretService,
+        ISettingsService settings,
         ILogger<PacAuthService> logger)
     {
         _pacExecutor = pacExecutor ?? throw new ArgumentNullException(nameof(pacExecutor));

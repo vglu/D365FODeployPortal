@@ -3,8 +3,8 @@
 @inject PackageService PkgService
 @inject MergeService MergeSvc
 @inject AzureDevOpsBuildService BuildService
-@inject SettingsService SettingsSvc
-@inject SecretProtectionService SecretSvc
+@inject ISettingsService SettingsSvc
+@inject ISecretProtectionService SecretSvc
 @inject NavigationManager NavManager
 @inject IJSRuntime JS
 @inject ISnackbar Snackbar
@@ -687,7 +687,7 @@
         _savePatChecked = false;
         try
         {
-            _savedPatMasked = _hasSavedPat ? SecretProtectionService.MaskSecret(SecretSvc.Decrypt(SettingsSvc.AzureDevOpsPatEncrypted)) : "";
+            _savedPatMasked = _hasSavedPat ? SecretSvc.MaskSecret(SecretSvc.Decrypt(SettingsSvc.AzureDevOpsPatEncrypted)) : "";
         }
         catch { _savedPatMasked = "****"; }
         _loadFromBuildVisible = true;
@@ -745,7 +745,7 @@
             {
                 SettingsSvc.SaveAzureDevOpsSettings(SecretSvc.Encrypt(_buildPat.Trim()), _buildOrg.Trim(), _buildProject.Trim());
                 _hasSavedPat = true;
-                _savedPatMasked = SecretProtectionService.MaskSecret(_buildPat.Trim());
+                _savedPatMasked = SecretSvc.MaskSecret(_buildPat.Trim());
                 _showPatField = false;
                 _savePatChecked = false;
                 Snackbar.Add("PAT and project saved.", Severity.Success);

@@ -58,6 +58,7 @@ Desktop.ini
 *.bak
 *.log
 TestResults/
+coveragereport/
 
 ## PDF generated from markdown (regenerable)
 # *.pdf

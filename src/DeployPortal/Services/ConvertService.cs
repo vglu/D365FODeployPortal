@@ -8,10 +8,10 @@ namespace DeployPortal.Services;
 /// </summary>
 public class ConvertService : IConvertService
 {
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly ILogger<ConvertService> _logger;
 
-    public ConvertService(SettingsService settings, ILogger<ConvertService> logger)
+    public ConvertService(ISettingsService settings, ILogger<ConvertService> logger)
     {
         _settings = settings;
         _logger = logger;

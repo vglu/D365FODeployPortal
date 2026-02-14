@@ -14,14 +14,14 @@ namespace DeployPortal.Services;
 public class PackageService
 {
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
-    private readonly SettingsService _settings;
+    private readonly ISettingsService _settings;
     private readonly IConvertService _convertService;
     private readonly IPackageChangeLogService _changeLogService;
     private readonly ILogger<PackageService> _logger;
 
     public PackageService(
         IDbContextFactory<AppDbContext> dbFactory,
-        SettingsService settings,
+        ISettingsService settings,
         IConvertService convertService,
         IPackageChangeLogService changeLogService,
         ILogger<PackageService> logger)
