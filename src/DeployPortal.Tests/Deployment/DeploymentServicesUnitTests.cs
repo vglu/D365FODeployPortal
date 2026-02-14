@@ -117,6 +117,7 @@ public class DeploymentServicesUnitTests
 
         // Act & Assert
         Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
+        await Task.CompletedTask;
     }
 
     [Test]
@@ -144,6 +145,7 @@ Organization Friendly Name: Contoso-Test-01"
 
         // Act & Assert
         Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
+        await Task.CompletedTask;
     }
 
     [Test]
@@ -225,6 +227,7 @@ Organization Friendly Name: Contoso-Test-01"
 
         // Act & Assert
         Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
+        await Task.CompletedTask;
     }
 
     [Test]
@@ -279,6 +282,7 @@ Organization Friendly Name: Contoso-Test-01"
 
         // Act & Assert (should not throw — just log warning)
         Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
+        await Task.CompletedTask;
     }
 
     [Test]
@@ -304,6 +308,7 @@ Organization Friendly Name: Contoso-Test-01"
 
         // Act & Assert (should not throw — just log warning)
         Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
+        await Task.CompletedTask;
     }
 
     #endregion
