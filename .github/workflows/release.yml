@@ -101,19 +101,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ---- Optional: push same image to Docker Hub (if DOCKERHUB_USERNAME + DOCKERHUB_TOKEN set) ----
+  # ---- Optional: push same image to Docker Hub. Set DOCKERHUB_USERNAME + DOCKERHUB_TOKEN or job is skipped (continue-on-error). ----
   push-dockerhub:
-    if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
     needs: [build-docker]
     runs-on: ubuntu-latest
+    continue-on-error: true
     permissions:
       contents: read
       packages: read
     steps:
-      - name: Set version from tag
-        id: ver
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -121,12 +117,15 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Pull from GHCR and push to Docker Hub
+        env:
+          GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/d365fo-deploy-portal
+          TAG: ${{ github.ref_name }}
         run: |
-          echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
-          docker pull ghcr.io/${{ github.repository_owner }}/d365fo-deploy-portal:${{ steps.ver.outputs.VERSION }}
-          docker tag ghcr.io/${{ github.repository_owner }}/d365fo-deploy-portal:${{ steps.ver.outputs.VERSION }} vglu/d365fo-deploy-portal:${{ steps.ver.outputs.VERSION }}
-          docker tag ghcr.io/${{ github.repository_owner }}/d365fo-deploy-portal:${{ steps.ver.outputs.VERSION }} vglu/d365fo-deploy-portal:latest
-          docker push vglu/d365fo-deploy-portal:${{ steps.ver.outputs.VERSION }}
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker pull "${GHCR_IMAGE}:${TAG}"
+          docker tag "${GHCR_IMAGE}:${TAG}" vglu/d365fo-deploy-portal:${TAG}
+          docker tag "${GHCR_IMAGE}:${TAG}" vglu/d365fo-deploy-portal:latest
+          docker push vglu/d365fo-deploy-portal:${TAG}
           docker push vglu/d365fo-deploy-portal:latest
 
   # ---- Create GitHub Release with notes and artifact ----
@@ -160,6 +159,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: deploy-portal-windows
+          path: release-artifact
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -169,5 +169,5 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
-            DeployPortal-${{ steps.ver.outputs.VERSION }}-win-x64.zip
+            release-artifact/DeployPortal-${{ steps.ver.outputs.VERSION }}-win-x64.zip
           fail_on_unmatched_files: true
