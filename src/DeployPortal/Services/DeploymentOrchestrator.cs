@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Threading.Channels;
 using DeployPortal.Data;
 using DeployPortal.Hubs;
@@ -14,18 +13,27 @@ public record DeploymentRequest(int DeploymentId);
 
 public class DeploymentOrchestrator : BackgroundService
 {
+    /// <summary>Minimum delay in seconds between starting one deployment and the next. Exposed for tests.</summary>
+    public const int DelayBetweenStartsSeconds = 30;
+    private static readonly TimeSpan DelayBetweenStarts = TimeSpan.FromSeconds(DelayBetweenStartsSeconds);
+
     private readonly Channel<DeploymentRequest> _channel;
     private readonly IServiceProvider _services;
     private readonly ILogger<DeploymentOrchestrator> _logger;
+    private readonly ISettingsService _settings;
+    private DateTime _lastDeploymentStart = DateTime.MinValue;
+    private readonly object _startLock = new();
 
     public DeploymentOrchestrator(
         Channel<DeploymentRequest> channel,
         IServiceProvider services,
-        ILogger<DeploymentOrchestrator> logger)
+        ILogger<DeploymentOrchestrator> logger,
+        ISettingsService settings)
     {
         _channel = channel;
         _services = services;
         _logger = logger;
+        _settings = settings;
     }
 
     public async Task EnqueueAsync(int deploymentId)
@@ -35,18 +43,49 @@ public class DeploymentOrchestrator : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("DeploymentOrchestrator started.");
+        var concurrency = Math.Max(SettingsService.MinMaxConcurrentDeployments, Math.Min(SettingsService.MaxMaxConcurrentDeployments, _settings.MaxConcurrentDeployments));
+        _logger.LogInformation("DeploymentOrchestrator started with {Concurrency} concurrent deployment(s).", concurrency);
 
-        await foreach (var request in _channel.Reader.ReadAllAsync(stoppingToken))
+        async Task RunWorkerAsync()
         {
-            try
+            while (await _channel.Reader.WaitToReadAsync(stoppingToken))
             {
-                await ProcessDeploymentAsync(request.DeploymentId, stoppingToken);
+                if (!_channel.Reader.TryRead(out var request))
+                    continue;
+                try
+                {
+                    await WaitDelayBetweenStartsAsync(stoppingToken);
+                    await ProcessDeploymentAsync(request.DeploymentId, stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing deployment {DeploymentId}", request.DeploymentId);
+                }
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing deployment {DeploymentId}", request.DeploymentId);
-            }
+        }
+
+        var workers = Enumerable.Range(0, concurrency).Select(_ => RunWorkerAsync()).ToArray();
+        await Task.WhenAll(workers);
+    }
+
+    /// <summary>Waits so that at least <see cref="DelayBetweenStarts"/> has passed since the previous deployment start.</summary>
+    private async Task WaitDelayBetweenStartsAsync(CancellationToken ct)
+    {
+        TimeSpan toWait;
+        lock (_startLock)
+        {
+            var now = DateTime.UtcNow;
+            var elapsed = _lastDeploymentStart == DateTime.MinValue ? DelayBetweenStarts : now - _lastDeploymentStart;
+            toWait = elapsed >= DelayBetweenStarts ? TimeSpan.Zero : DelayBetweenStarts - elapsed;
+        }
+        if (toWait > TimeSpan.Zero)
+        {
+            _logger.LogDebug("Waiting {Seconds}s before starting next deployment.", toWait.TotalSeconds);
+            await Task.Delay(toWait, ct);
+        }
+        lock (_startLock)
+        {
+            _lastDeploymentStart = DateTime.UtcNow;
         }
     }
 

@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<Deployment> Deployments => Set<Deployment>();
     public DbSet<DeploymentLog> DeploymentLogs => Set<DeploymentLog>();
     public DbSet<PackageChangeLog> PackageChangeLogs => Set<PackageChangeLog>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,6 +65,13 @@ public class AppDbContext : DbContext
 
             entity.HasIndex(c => c.PackageId);
             entity.HasIndex(c => c.ChangedAt);
+        });
+
+        modelBuilder.Entity<AppSetting>(entity =>
+        {
+            entity.HasKey(e => e.Key);
+            entity.Property(e => e.Key).HasMaxLength(128);
+            entity.Property(e => e.Value).HasMaxLength(2048);
         });
     }
 }

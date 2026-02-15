@@ -1,3 +1,4 @@
+using DeployPortal.Data;
 using DeployPortal.Services;
 using DeployPortal.Services.Deployment;
 using DeployPortal.Services.Deployment.PacCli;
@@ -5,6 +6,7 @@ using DeployPortal.Services.Deployment.Validation;
 using DeployPortal.Services.Deployment.Isolation;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NUnit.Framework;
@@ -130,8 +132,8 @@ public class DeploymentServicesUnitTests
         {
             Environment = new Models.Environment 
             { 
-                Name = "Contoso-Test-01", 
-                Url = "cst-hfx-tst-07.crm.dynamics.com" 
+                Name = "Example-Target-Env", 
+                Url = "target-env.crm.dynamics.com" 
             },
             IsolatedAuthDir = _testDir,
             LogFilePath = Path.Combine(_testDir, "deploy.log"),
@@ -139,8 +141,8 @@ public class DeploymentServicesUnitTests
             // Real output from pac auth who (interactive auth) — no URL, but has Organization Friendly Name
             PacAuthWhoOutput = @"Connected as user@example.com
 Type: User
-Organization Id: ef7d39e4-66d2-f011-8729-000d3a33a003
-Organization Friendly Name: Contoso-Test-01"
+Organization Id: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+Organization Friendly Name: Example-Target-Env"
         };
 
         // Act & Assert
@@ -315,21 +317,31 @@ Organization Friendly Name: Contoso-Test-01"
 
     #region IsolatedDirectoryManager Tests
 
+    private static ISettingsService CreateSettingsService(string testDir)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["DeployPortal:TempWorkingDir"] = testDir
+            })
+            .Build();
+        var env = new Mock<IWebHostEnvironment>();
+        env.Setup(e => e.ContentRootPath).Returns(testDir);
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlite($"Data Source={Path.Combine(testDir, "settings.db")}")
+            .Options;
+        using (var db = new AppDbContext(options))
+            db.Database.EnsureCreated();
+        var dbFactory = new PooledDbContextFactory(options);
+        var settingsLogger = new Mock<ILogger<SettingsService>>();
+        return new SettingsService(config, env.Object, settingsLogger.Object, dbFactory);
+    }
+
     [Test]
     public void IsolatedDirectoryManager_CreateIsolatedDirectory_CreatesDirectory()
     {
         // Arrange
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["DeployPortal:TempWorkingDir"] = _testDir
-            })
-            .Build();
-        var env = new Mock<IWebHostEnvironment>();
-        env.Setup(e => e.ContentRootPath).Returns(_testDir);
-        var settingsLogger = new Mock<ILogger<SettingsService>>();
-        var settings = new SettingsService(config, env.Object, settingsLogger.Object);
-        
+        var settings = CreateSettingsService(_testDir);
         var logger = new Mock<ILogger<IsolatedDirectoryManager>>();
         var manager = new IsolatedDirectoryManager(settings, logger.Object);
 
@@ -346,17 +358,7 @@ Organization Friendly Name: Contoso-Test-01"
     public void IsolatedDirectoryManager_DeleteIsolatedDirectory_DeletesDirectory()
     {
         // Arrange
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["DeployPortal:TempWorkingDir"] = _testDir
-            })
-            .Build();
-        var env = new Mock<IWebHostEnvironment>();
-        env.Setup(e => e.ContentRootPath).Returns(_testDir);
-        var settingsLogger = new Mock<ILogger<SettingsService>>();
-        var settings = new SettingsService(config, env.Object, settingsLogger.Object);
-        
+        var settings = CreateSettingsService(_testDir);
         var logger = new Mock<ILogger<IsolatedDirectoryManager>>();
         var manager = new IsolatedDirectoryManager(settings, logger.Object);
         var isolatedDir = manager.CreateIsolatedDirectory(456);
@@ -373,17 +375,7 @@ Organization Friendly Name: Contoso-Test-01"
     public void IsolatedDirectoryManager_DeleteIsolatedDirectory_DoesNotThrow_WhenDirectoryDoesNotExist()
     {
         // Arrange
-        var config = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["DeployPortal:TempWorkingDir"] = _testDir
-            })
-            .Build();
-        var env = new Mock<IWebHostEnvironment>();
-        env.Setup(e => e.ContentRootPath).Returns(_testDir);
-        var settingsLogger = new Mock<ILogger<SettingsService>>();
-        var settings = new SettingsService(config, env.Object, settingsLogger.Object);
-        
+        var settings = CreateSettingsService(_testDir);
         var logger = new Mock<ILogger<IsolatedDirectoryManager>>();
         var manager = new IsolatedDirectoryManager(settings, logger.Object);
         var nonexistentDir = Path.Combine(_testDir, "nonexistent");
@@ -393,4 +385,22 @@ Organization Friendly Name: Contoso-Test-01"
     }
 
     #endregion
+
+    #region DeploymentOrchestrator (delay constant)
+
+    [Test]
+    public void DeploymentOrchestrator_DelayBetweenStarts_IsThirtySeconds()
+    {
+        Assert.That(DeploymentOrchestrator.DelayBetweenStartsSeconds, Is.EqualTo(30),
+            "Delay between deployment starts must remain 30 seconds unless product requirement changes.");
+    }
+
+    #endregion
+
+    private sealed class PooledDbContextFactory : IDbContextFactory<AppDbContext>
+    {
+        private readonly DbContextOptions<AppDbContext> _options;
+        public PooledDbContextFactory(DbContextOptions<AppDbContext> options) => _options = options;
+        public AppDbContext CreateDbContext() => new AppDbContext(_options);
+    }
 }

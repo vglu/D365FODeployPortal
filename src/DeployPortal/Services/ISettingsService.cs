@@ -23,6 +23,9 @@ public interface ISettingsService
     string ReleasePipelineFeedName { get; }
     string UserSettingsFilePath { get; }
 
+    /// <summary>Maximum number of concurrent deployments (1–20). Stored in database. Default: 2.</summary>
+    int MaxConcurrentDeployments { get; }
+
     List<SettingsService.ToolStatus> ValidateTools();
     string GetEffectivePacPath();
     string GetEffectiveModelUtilPath();

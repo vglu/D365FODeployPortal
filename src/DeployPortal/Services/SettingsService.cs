@@ -1,25 +1,39 @@
 using System.Text.Json;
+using DeployPortal.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace DeployPortal.Services;
 
 /// <summary>
 /// Manages application settings that can be changed at runtime via the UI.
 /// Settings are persisted to a JSON file in LocalApplicationData so they survive rebuilds and clean.
+/// Some settings (e.g. MaxConcurrentDeployments) are stored in the database.
 /// On read, user settings override appsettings.json values.
 /// </summary>
 public class SettingsService : ISettingsService
 {
+    public const string KeyMaxConcurrentDeployments = "MaxConcurrentDeployments";
+    public const int DefaultMaxConcurrentDeployments = 2;
+    public const int MinMaxConcurrentDeployments = 1;
+    public const int MaxMaxConcurrentDeployments = 20;
+
     private readonly IConfiguration _config;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<SettingsService> _logger;
+    private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly string _userSettingsPath;
     private static readonly object _lock = new();
 
-    public SettingsService(IConfiguration config, IWebHostEnvironment env, ILogger<SettingsService> logger)
+    public SettingsService(
+        IConfiguration config,
+        IWebHostEnvironment env,
+        ILogger<SettingsService> logger,
+        IDbContextFactory<AppDbContext> dbFactory)
     {
         _config = config;
         _env = env;
         _logger = logger;
+        _dbFactory = dbFactory;
         var configuredPath = _config["DeployPortal:UserSettingsPath"]?.Trim();
         if (!string.IsNullOrEmpty(configuredPath))
         {
@@ -115,6 +129,12 @@ public class SettingsService : ISettingsService
 
     /// <summary>Path where user settings are stored (for display in UI).</summary>
     public string UserSettingsFilePath => _userSettingsPath;
+
+    /// <summary>
+    /// Maximum number of deployments that can run at the same time. Stored in the database.
+    /// Default: 2. Valid range: 1–20.
+    /// </summary>
+    public int MaxConcurrentDeployments => GetMaxConcurrentDeploymentsFromDb();
 
     // ========== Tool Validation ==========
     public record ToolStatus(string Name, string Path, bool Exists, string Message);
@@ -238,13 +258,14 @@ public class SettingsService : ISettingsService
     }
 
     // ========== Read/Write ==========
+    private static readonly string[] FileSettingKeys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath", "SimulateDeployment" };
+
     public Dictionary<string, string> GetAllSettings()
     {
         var userSettings = LoadUserSettings();
-        var keys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath", "SimulateDeployment" };
         var result = new Dictionary<string, string>();
 
-        foreach (var key in keys)
+        foreach (var key in FileSettingKeys)
         {
             if (userSettings.TryGetValue(key, out var userVal) && !string.IsNullOrEmpty(userVal))
                 result[key] = userVal;
@@ -252,22 +273,73 @@ public class SettingsService : ISettingsService
                 result[key] = _config[$"DeployPortal:{key}"] ?? "";
         }
 
+        result[KeyMaxConcurrentDeployments] = MaxConcurrentDeployments.ToString();
         return result;
     }
 
     public void SaveSettings(Dictionary<string, string> settings)
     {
+        if (settings.TryGetValue(KeyMaxConcurrentDeployments, out var mcVal) &&
+            int.TryParse(mcVal, out var n) &&
+            n >= MinMaxConcurrentDeployments &&
+            n <= MaxMaxConcurrentDeployments)
+        {
+            SaveMaxConcurrentDeploymentsToDb(n);
+        }
+
         lock (_lock)
         {
             var dir = Path.GetDirectoryName(_userSettingsPath);
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
-            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions
+            var fileDict = new Dictionary<string, string>();
+            foreach (var key in FileSettingKeys)
+            {
+                if (settings.TryGetValue(key, out var v))
+                    fileDict[key] = v;
+            }
+            var json = JsonSerializer.Serialize(fileDict, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
             File.WriteAllText(_userSettingsPath, json);
             _logger.LogInformation("User settings saved to {Path}", _userSettingsPath);
+        }
+    }
+
+    private int GetMaxConcurrentDeploymentsFromDb()
+    {
+        try
+        {
+            using var db = _dbFactory.CreateDbContext();
+            var row = db.AppSettings.AsNoTracking().FirstOrDefault(x => x.Key == KeyMaxConcurrentDeployments);
+            if (row != null && int.TryParse(row.Value, out var v) && v >= MinMaxConcurrentDeployments && v <= MaxMaxConcurrentDeployments)
+                return v;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not read MaxConcurrentDeployments from database, using default {Default}", DefaultMaxConcurrentDeployments);
+        }
+        return DefaultMaxConcurrentDeployments;
+    }
+
+    private void SaveMaxConcurrentDeploymentsToDb(int value)
+    {
+        try
+        {
+            using var db = _dbFactory.CreateDbContext();
+            var row = db.AppSettings.FirstOrDefault(x => x.Key == KeyMaxConcurrentDeployments);
+            if (row != null)
+                row.Value = value.ToString();
+            else
+                db.AppSettings.Add(new AppSetting { Key = KeyMaxConcurrentDeployments, Value = value.ToString() });
+            db.SaveChanges();
+            _logger.LogInformation("MaxConcurrentDeployments saved to database: {Value}", value);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save MaxConcurrentDeployments to database");
+            throw;
         }
     }
 

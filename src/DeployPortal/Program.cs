@@ -287,6 +287,24 @@ try
         }
         EnsurePackageChangeLogsTable(db);
 
+        void EnsureAppSettingsTable(AppDbContext ctx)
+        {
+            var conn = ctx.Database.GetDbConnection();
+            if (conn.State != System.Data.ConnectionState.Open)
+                conn.Open();
+            using var cmd = conn.CreateCommand();
+#pragma warning disable EF1002
+            cmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS AppSettings (
+                    Key TEXT NOT NULL PRIMARY KEY,
+                    Value TEXT NULL
+                );";
+#pragma warning restore EF1002
+            cmd.ExecuteNonQuery();
+            Log.Information("Ensured AppSettings table exists");
+        }
+        EnsureAppSettingsTable(db);
+
         // Ensure placeholder environment for Release Pipeline deployments
         if (!db.Environments.Any(e => e.Name == "Release Pipeline"))
         {

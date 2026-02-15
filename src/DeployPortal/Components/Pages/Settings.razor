@@ -18,6 +18,18 @@
     </MudText>
 </MudPaper>
 
+@* ===== DEPLOYMENT QUEUE ===== *@
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudIcon Icon="@Icons.Material.Filled.Queue" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">Deployment queue</MudText>
+    </MudStack>
+    <MudNumericField @bind-Value="_maxConcurrentDeployments" Label="Max concurrent deployments"
+                     Variant="Variant.Outlined" Min="1" Max="20" Class="mb-3"
+                     HelperText="How many deployments (one package → one environment) can run at the same time. Stored in database. Change takes effect after app restart."
+                     Style="max-width: 120px;" />
+</MudPaper>
+
 @* ===== TOOL STATUS ===== *@
 <MudPaper Class="pa-4 mb-4" Elevation="2">
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
@@ -432,6 +444,7 @@
     private string _databasePath = "";
     private string _lcsTemplatePath = "";
     private bool _simulateDeployment;
+    private int _maxConcurrentDeployments = 2;
     private bool _saving;
     private List<SettingsService.ToolStatus>? _toolStatus;
 
@@ -456,6 +469,7 @@
         _databasePath = settings.GetValueOrDefault("DatabasePath", "");
         _lcsTemplatePath = settings.GetValueOrDefault("LcsTemplatePath", "");
         _simulateDeployment = string.Equals(settings.GetValueOrDefault("SimulateDeployment", "false"), "true", StringComparison.OrdinalIgnoreCase);
+        _maxConcurrentDeployments = int.TryParse(settings.GetValueOrDefault("MaxConcurrentDeployments", "2"), out var mc) && mc >= 1 && mc <= 20 ? mc : 2;
     }
 
     private void RefreshStatus()
@@ -481,12 +495,13 @@
                 ["TempWorkingDir"] = _tempWorkingDir.Trim(),
                 ["DatabasePath"] = _databasePath.Trim(),
                 ["LcsTemplatePath"] = _lcsTemplatePath.Trim(),
-                ["SimulateDeployment"] = _simulateDeployment ? "true" : "false"
+                ["SimulateDeployment"] = _simulateDeployment ? "true" : "false",
+                ["MaxConcurrentDeployments"] = Math.Clamp(_maxConcurrentDeployments, 1, 20).ToString()
             };
 
             SettingsSvc.SaveSettings(settings);
             RefreshStatus();
-            Snackbar.Add("Settings saved! Tool paths updated. Database path changes require app restart.", Severity.Success);
+            Snackbar.Add("Settings saved! Max concurrent deployments and tool paths updated. Database path and concurrency take effect after app restart.", Severity.Success);
         }
         catch (Exception ex)
         {

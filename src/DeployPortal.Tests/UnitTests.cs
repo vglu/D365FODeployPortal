@@ -52,13 +52,33 @@ public class UnitTests
         var env = new Mock<IWebHostEnvironment>();
         env.Setup(e => e.ContentRootPath).Returns(_testDir);
         var log = new Mock<ILogger<SettingsService>>();
-        _settings = new SettingsService(config, env.Object, log.Object);
+        _settings = new SettingsService(config, env.Object, log.Object, _dbFactory);
     }
 
     [TearDown]
     public void TearDown()
     {
         try { Directory.Delete(_testDir, true); } catch { }
+    }
+
+    [Test]
+    public void SettingsService_MaxConcurrentDeployments_StoredInDatabase()
+    {
+        var all = _settings.GetAllSettings();
+        Assert.That(all, Does.ContainKey("MaxConcurrentDeployments"));
+        Assert.That(_settings.MaxConcurrentDeployments, Is.EqualTo(2), "Default when DB has no row");
+
+        _settings.SaveSettings(new Dictionary<string, string>(all)
+        {
+            ["MaxConcurrentDeployments"] = "3"
+        });
+        Assert.That(_settings.MaxConcurrentDeployments, Is.EqualTo(3), "After save to DB");
+
+        _settings.SaveSettings(new Dictionary<string, string>(all)
+        {
+            ["MaxConcurrentDeployments"] = "1"
+        });
+        Assert.That(_settings.MaxConcurrentDeployments, Is.EqualTo(1));
     }
 
     [Test]
