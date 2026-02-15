@@ -110,23 +110,50 @@ jobs:
       contents: read
       packages: read
     steps:
+      - name: Checkout (for Docker Hub overview)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Pull from GHCR and push to Docker Hub
         env:
           GHCR_IMAGE: ghcr.io/${{ github.repository_owner }}/d365fo-deploy-portal
           TAG: ${{ github.ref_name }}
         run: |
-          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker pull "${GHCR_IMAGE}:${TAG}"
           docker tag "${GHCR_IMAGE}:${TAG}" vglu/d365fo-deploy-portal:${TAG}
           docker tag "${GHCR_IMAGE}:${TAG}" vglu/d365fo-deploy-portal:latest
           docker push vglu/d365fo-deploy-portal:${TAG}
           docker push vglu/d365fo-deploy-portal:latest
+
+      - name: Update Docker Hub repository overview
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          RESP=$(curl -s -X POST "https://hub.docker.com/v2/users/login/" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}")
+          TOKEN=$(echo "$RESP" | jq -r .token)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then echo "Failed to get Docker Hub JWT"; exit 1; fi
+          BODY=$(jq -n --rawfile f .github/docker-hub-overview.md '{full_description: $f}')
+          curl -s -X PATCH "https://hub.docker.com/v2/repositories/vglu/d365fo-deploy-portal/" \
+            -H "Authorization: JWT ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY"
 
   # ---- Create GitHub Release with notes and artifact ----
   release:
