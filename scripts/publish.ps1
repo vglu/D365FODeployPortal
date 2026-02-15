@@ -10,12 +10,14 @@
 #>
 
 param(
-    [string]$OutputDir = (Join-Path $PSScriptRoot "publish"),
+    [string]$OutputDir = "",
     [string]$Runtime = "win-x64",
     [switch]$SingleFile
 )
 
-$projectPath = Join-Path $PSScriptRoot "src\DeployPortal\DeployPortal.csproj"
+$ProjectRoot = (Split-Path $PSScriptRoot -Parent)
+if (-not $OutputDir) { $OutputDir = Join-Path $ProjectRoot "publish" }
+$projectPath = Join-Path $ProjectRoot "src\DeployPortal\DeployPortal.csproj"
 
 Write-Host '========================================' -ForegroundColor Cyan
 Write-Host '  DeployPortal - Publish' -ForegroundColor Cyan
@@ -64,16 +66,16 @@ if ($LASTEXITCODE -ne 0) {
 
 # Copy helper files (including prerequisites script so it can be run from publish folder)
 $helperFiles = @(
-    "Setup-ServicePrincipal.ps1",
-    "documents/Setup-ServicePrincipal-Manual.md",
-    "check-prerequisites.ps1"
+    @{ Dir = "scripts"; File = "Setup-ServicePrincipal.ps1" },
+    @{ Dir = "documents"; File = "Setup-ServicePrincipal-Manual.md" },
+    @{ Dir = "scripts"; File = "check-prerequisites.ps1" }
 )
 
-foreach ($file in $helperFiles) {
-    $src = Join-Path $PSScriptRoot $file
+foreach ($item in $helperFiles) {
+    $src = Join-Path $ProjectRoot (Join-Path $item.Dir $item.File)
     if (Test-Path $src) {
         Copy-Item $src $OutputDir
-        Write-Host ('Copied: ' + $file) -ForegroundColor Green
+        Write-Host ('Copied: ' + $item.File) -ForegroundColor Green
     }
 }
 
@@ -91,7 +93,7 @@ DeployPortal.exe --urls "http://localhost:5000"
 $startCmd | Out-File (Join-Path $OutputDir "start.cmd") -Encoding ASCII
 
 # Copy README for distribution
-$readmeSrc = Join-Path $PSScriptRoot "documents/publish-README.md"
+$readmeSrc = Join-Path $ProjectRoot "documents\publish-README.md"
 if (Test-Path $readmeSrc) {
     Copy-Item $readmeSrc (Join-Path $OutputDir "README.md")
     Write-Host 'Copied: README.md' -ForegroundColor Green

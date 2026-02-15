@@ -114,5 +114,5 @@ feat(packages): add package content services and change log (WIP)
 - Add PackageModificationService skeleton (add/remove models and licenses)
   - Validation and changelog wiring done; LCS/Unified modification methods TODO
 - Register services in DI; ensure PackageChangeLogs table on startup
-- Document continuation in docs/CONTINUATION_PACKAGE_MODELS.md
+- Document continuation in tech-docs/CONTINUATION_PACKAGE_MODELS.md
 ```

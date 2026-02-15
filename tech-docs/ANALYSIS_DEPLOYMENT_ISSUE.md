@@ -41,7 +41,7 @@
 
 **Деплойменты #1 и #2:**
 - Organization ID: `<ORG_ID_A>`
-- Organization UniqueName: `unq9f9541eb43e2ef11b8e46045bd003`
+- Organization UniqueName: `<UNIQUE_NAME_A>`
 - Target URL: `https://<wrong-env>.crm.dynamics.com/`
 - PackageType: **Sandbox** 
 - PlatformVersion: 7.0.7778.29
@@ -49,7 +49,7 @@
 
 **Эталонный P2:**
 - Organization ID: `<ORG_ID_B>`
-- Organization UniqueName: `unqef7d39e466d2f0118729000d3a33a`
+- Organization UniqueName: `<UNIQUE_NAME_B>`
 - Target URL: `https://<target-env>.crm.dynamics.com/`
 - PackageType: **OnlineDev**
 - PlatformVersion: 7.0.7690.99
@@ -75,7 +75,7 @@
 
 ### Причина проблемы:
 
-1. **Environment "Cst-hfx-tst-07" (ID: 6) в базе данных НЕ имеет Service Principal credentials:**
+1. **Environment "Example-Target-Env" (ID: 6) в базе данных НЕ имеет Service Principal credentials:**
    - TenantId: <TENANT_ID> ✅
    - ApplicationId: **НЕ ЗАПОЛНЕН** ❌
    - ClientSecretEncrypted: Есть, но без ApplicationId не используется
@@ -88,14 +88,14 @@
 
 3. **При интерактивной аутентификации вы вручную авторизовались через браузер и выбрали другой энвайронмент:**
    - Ожидаемый: `<target-env>.crm.dynamics.com` (<env-name>)
-   - Фактически выбранный: `<wrong-env>.crm.dynamics.com` (C365afspmunified)
+   - Фактически выбранный: `<wrong-env>.crm.dynamics.com` (Example-Other-Env)
 
 ### Сравнение environments из базы:
 
 | ID | Name | URL | Has ApplicationId | Has ServicePrincipal |
 |----|------|-----|-------------------|----------------------|
-| 1 | C365afspmunified | <wrong-env>.crm.dynamics.com | ❌ | ✅ (has secret) |
-| 6 | Cst-hfx-tst-07 | <target-env>.crm.dynamics.com | ❌ | ❌ |
+| 1 | Example-Other-Env | <wrong-env>.crm.dynamics.com | ❌ | ✅ (has secret) |
+| 6 | Example-Target-Env | <target-env>.crm.dynamics.com | ❌ | ❌ |
 
 Оба энвайронмента НЕ имеют ApplicationId, поэтому оба требуют интерактивную аутентификацию!
 

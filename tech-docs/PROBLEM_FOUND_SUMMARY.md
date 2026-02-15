@@ -44,7 +44,7 @@ pac auth create --environment "<target-env>.crm.dynamics.com" --deviceCode
 ```
 
 При device code аутентификации открывается браузер, где вы вручную логинитесь и **выбираете энвайронмент**. 
-И вы оба раза выбрали **неправильный** энвайронмент (c365afspmunified вместо cst-hfx-tst-07).
+И вы оба раза выбрали **неправильный** энвайронмент (wrong-env вместо target-env).
 
 ---
 

@@ -43,7 +43,7 @@ jobs:
             --runtime win-x64 `
             --self-contained true `
             --output $outDir
-          Copy-Item Setup-ServicePrincipal.ps1, documents/Setup-ServicePrincipal-Manual.md, check-prerequisites.ps1 -Destination $outDir -ErrorAction SilentlyContinue
+          Copy-Item scripts/Setup-ServicePrincipal.ps1, documents/Setup-ServicePrincipal-Manual.md, scripts/check-prerequisites.ps1 -Destination $outDir -ErrorAction SilentlyContinue
           if (Test-Path documents/publish-README.md) { Copy-Item documents/publish-README.md $outDir\README.md }
           Set-Content -Path (Join-Path $outDir "start.cmd") -Value "@echo off","echo Starting DeployPortal...","start http://localhost:5000","DeployPortal.exe --urls `"http://localhost:5000`"" -Encoding ASCII
           echo "OUT_DIR=$outDir" >> $env:GITHUB_ENV

@@ -52,7 +52,7 @@
 
 **Config:**
 - `Program.cs` — регистрация `ISettingsService`, `ISecretProtectionService`
-- `coverlet.runsettings`, `run-tests.ps1` (поддержка `-Coverage`), `.gitignore` (coveragereport/)
+- `coverlet.runsettings`, `scripts/run-tests.ps1` (поддержка `-Coverage`), `.gitignore` (coveragereport/)
 
 **Project:**
 - `src/DeployPortal/DeployPortal.csproj` — version 1.5.0

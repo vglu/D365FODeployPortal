@@ -1,7 +1,7 @@
 # 🎯 Решение проблемы с деплойментами #1 и #2
 
 ## Проблема
-Деплойменты попадали на **неправильный энвайронмент** (`c365afspmunified.crm.dynamics.com` вместо `cst-hfx-tst-07.crm.dynamics.com`), потому что Service Principal имел доступ к нескольким энвайронментам и PAC CLI выбирал не тот.
+Деплойменты попадали на **неправильный энвайронмент** (`wrong-env.crm.dynamics.com` вместо `target-env.crm.dynamics.com`), потому что Service Principal имел доступ к нескольким энвайронментам и PAC CLI выбирал не тот.
 
 ## Решение
 **Изоляция PAC auth profiles** через `PAC_AUTH_PROFILE_DIRECTORY`.
@@ -44,11 +44,11 @@
 1. Запустите деплоймент на Cst-hfx-tst-07
 2. Проверьте логи на наличие:
    - `[Isolation] Using dedicated PAC auth directory:`
-   - `[Validation] Confirmed connected to correct environment: cst-hfx-tst-07.crm.dynamics.com` (CHECK 1)
+   - `[Validation] Confirmed connected to correct environment: target-env.crm.dynamics.com` (CHECK 1)
    - `[Post-Deploy Validation] ✓ Confirmed: package was deployed to correct environment.` (CHECK 2)
 3. После завершения проверьте лог файл:
    ```
-   Deployment Target Organization Uri: https://cst-hfx-tst-07.crm.dynamics.com/
+   Deployment Target Organization Uri: https://target-env.crm.dynamics.com/
    ```
 
 ### Ожидаемые результаты
@@ -56,19 +56,19 @@
 **Успешный деплоймент:**
 ```
 [Isolation] Using dedicated PAC auth directory: C:\Temp\DeployPortal\pac_auth_3_...
-Authenticating to cst-hfx-tst-07.crm.dynamics.com (Service Principal)...
-[Validation] Confirmed connected to correct environment: cst-hfx-tst-07.crm.dynamics.com ✓
+Authenticating to target-env.crm.dynamics.com (Service Principal)...
+[Validation] Confirmed connected to correct environment: target-env.crm.dynamics.com ✓
 Starting deployment...
 Deployment completed.
-[Post-Deploy Validation] ✓ Organization Uri from log: https://cst-hfx-tst-07.crm.dynamics.com/...
+[Post-Deploy Validation] ✓ Organization Uri from log: https://target-env.crm.dynamics.com/...
 [Post-Deploy Validation] ✓ Confirmed: package was deployed to correct environment.
 ```
 
 **Если PAC auth подключился к неправильному энву (CHECK 1 провален):**
 ```
 [ERROR] PAC authentication verification FAILED!
-        Expected: cst-hfx-tst-07.crm.dynamics.com
-        Actual: c365afspmunified.crm.dynamics.com
+        Expected: target-env.crm.dynamics.com
+        Actual: wrong-env.crm.dynamics.com
 Deployment FAILED (пакет НЕ применён) ✓
 ```
 
@@ -77,8 +77,8 @@ Deployment FAILED (пакет НЕ применён) ✓
 [Post-Deploy Validation] Verifying deployment target from log file...
 [ERROR] ❌ POST-DEPLOYMENT VALIDATION FAILED! ❌
         Package was deployed to WRONG environment!
-        Expected: cst-hfx-tst-07.crm.dynamics.com
-        Actual: c365afspmunified.crm.dynamics.com
+        Expected: target-env.crm.dynamics.com
+        Actual: wrong-env.crm.dynamics.com
 Deployment marked as FAILED (но пакет УЖЕ применён на неправильном энве) ⚠️
 ```
 

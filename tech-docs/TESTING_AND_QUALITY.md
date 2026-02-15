@@ -94,7 +94,7 @@
 ### Как запускать
 
 - **Обычные тесты (без E2E):**  
-  `.\run-tests.ps1`  
+  `.\scripts\run-tests.ps1`  
   или  
   `dotnet test src\DeployPortal.Tests\DeployPortal.Tests.csproj --filter "FullyQualifiedName!~E2ETests"`
 

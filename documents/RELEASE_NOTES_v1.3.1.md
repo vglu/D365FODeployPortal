@@ -15,12 +15,12 @@ When using **Interactive Authentication (device code flow)**, the pre-deployment
 ```
 ❌ PRE-DEPLOYMENT VALIDATION FAILED! ❌
 PAC CLI authenticated to WRONG environment!
-Expected environment: Cst-hfx-tst-07 (cst-hfx-tst-07.crm.dynamics.com)
+Expected environment: Example-Target-Env (target-env.crm.dynamics.com)
 But 'pac auth who' output does not contain expected URL.
 ```
 
 **Root Cause:**
-The validator only checked for the environment **URL** in the `pac auth who` output. However, for **interactive authentication**, the output does NOT contain the URL (e.g., `cst-hfx-tst-07.crm.dynamics.com`), but instead contains:
+The validator only checked for the environment **URL** in the `pac auth who` output. However, for **interactive authentication**, the output does NOT contain the URL (e.g., `target-env.crm.dynamics.com`), but instead contains:
 
 ```
 Organization Friendly Name: Contoso-Test-01

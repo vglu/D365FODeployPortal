@@ -18,7 +18,7 @@
 | .NET Runtime    | No        | Bundled (self-contained publish)                         |
 | ModelUtil.exe   | For LCS conversion | Installed with D365FO dev tools              |
 | PAC CLI         | For deployment | dotnet tool install --global Microsoft.PowerApps.CLI.Tool |
-| Azure SP        | For deployment | **PowerShell:** `.\Setup-ServicePrincipal.ps1` — **CMD:** `powershell -NoProfile -File Setup-ServicePrincipal.ps1` — or follow Manual.md |
+| Azure SP        | For deployment | **PowerShell (from repo root):** `.\scripts\Setup-ServicePrincipal.ps1` — **CMD:** `powershell -NoProfile -File scripts\Setup-ServicePrincipal.ps1`. In this folder (publish): `.\Setup-ServicePrincipal.ps1` if the script was copied here. — or follow Manual.md |
 
 ## Configuration
 

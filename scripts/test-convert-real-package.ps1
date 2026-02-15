@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
 
 Write-Host ("=" * 70) -ForegroundColor Cyan
 Write-Host "  LCS -> UNIFIED CONVERSION DIAGNOSTICS" -ForegroundColor Cyan
@@ -66,14 +67,15 @@ Write-Host ""
 # ===== 2. Run conversion test =====
 Write-Host "--- Running built-in converter (via test) ---" -ForegroundColor Yellow
 $env:DeployPortal_TestLcsPackagePath = $fullPath
-$testResult = & dotnet test "d:\Projects\D365FODeployPortal\src\DeployPortal.Tests\DeployPortal.Tests.csproj" `
+$testProj = Join-Path $ProjectRoot "src\DeployPortal.Tests\DeployPortal.Tests.csproj"
+$testResult = & dotnet test $testProj `
     --filter "FullyQualifiedName~ConvertRealLcsPackage_FromEnv" `
     --no-build `
     --logger "console;verbosity=detailed" 2>&1
 
 # Try build then run if no-build failed
 if ($LASTEXITCODE -ne 0) {
-    $testResult = & dotnet test "d:\Projects\D365FODeployPortal\src\DeployPortal.Tests\DeployPortal.Tests.csproj" `
+    $testResult = & dotnet test $testProj `
         --filter "FullyQualifiedName~ConvertRealLcsPackage_FromEnv" `
         --logger "console;verbosity=detailed" 2>&1
 }

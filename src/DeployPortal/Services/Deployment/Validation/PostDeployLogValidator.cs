@@ -34,7 +34,7 @@ public class PostDeployLogValidator : IDeploymentValidator
             var logContent = await File.ReadAllTextAsync(context.LogFilePath);
 
             // Find the line with "Deployment Target Organization Uri:"
-            // Example: "PackageDeployVerb Information: 8 : Message: Deployment Target Organization Uri: https://cst-hfx-tst-07.crm.dynamics.com/XRMServices/2011/Organization.svc/web?SDKClientVersion=9.2.49.14828"
+            // Example: "PackageDeployVerb Information: 8 : Message: Deployment Target Organization Uri: https://target-env.crm.dynamics.com/XRMServices/2011/Organization.svc/web?SDKClientVersion=9.2.49.14828"
             var uriLinePrefix = "Deployment Target Organization Uri:";
             var uriLine = logContent
                 .Split('\n')
@@ -52,8 +52,8 @@ public class PostDeployLogValidator : IDeploymentValidator
             var actualUri = uriLine.Substring(uriStartIdx).Trim();
 
             // Check if the actual URI contains the expected environment URL
-            // Expected: context.Environment.Url = "cst-hfx-tst-07.crm.dynamics.com"
-            // Actual: "https://cst-hfx-tst-07.crm.dynamics.com/XRMServices/2011/Organization.svc/web?SDKClientVersion=..."
+            // Expected: context.Environment.Url = "target-env.crm.dynamics.com"
+            // Actual: "https://target-env.crm.dynamics.com/XRMServices/2011/Organization.svc/web?SDKClientVersion=..."
             if (!actualUri.Contains(context.Environment.Url, StringComparison.OrdinalIgnoreCase))
             {
                 // CRITICAL ERROR: Deployed to wrong environment!

@@ -7,7 +7,7 @@
 2. Переиспользования существующих auth сессий
 3. Race conditions при параллельных деплойментах
 
-**Результат:** Деплойменты #1 и #2 попали на `c365afspmunified.crm.dynamics.com` вместо `cst-hfx-tst-07.crm.dynamics.com`
+**Результат:** Деплойменты #1 и #2 попали на `wrong-env.crm.dynamics.com` вместо `target-env.crm.dynamics.com`
 
 ---
 
@@ -91,7 +91,7 @@ await deployService.DeployPackageAsync(
 ### Deployment #1 (на Cst-hfx-tst-07):
 ```
 1. Создаёт: C:\Temp\DeployPortal\pac_auth_1_a1b2c3d4e5f6...
-2. Запускает: pac auth create --applicationId xxx --environment cst-hfx-tst-07.crm.dynamics.com
+2. Запускает: pac auth create --applicationId xxx --environment target-env.crm.dynamics.com
    с env var: PAC_AUTH_PROFILE_DIRECTORY=C:\Temp\DeployPortal\pac_auth_1_a1b2c3d4e5f6...
 3. Auth profile сохраняется ТОЛЬКО в эту папку
 4. Валидирует через pac auth who
@@ -102,7 +102,7 @@ await deployService.DeployPackageAsync(
 ### Deployment #2 (параллельно на Contoso-Test-02):
 ```
 1. Создаёт: C:\Temp\DeployPortal\pac_auth_2_x9y8z7w6v5u4...
-2. Запускает: pac auth create --applicationId yyy --environment cst-hfx-tst-05.crm.dynamics.com
+2. Запускает: pac auth create --applicationId yyy --environment env-b.crm.dynamics.com
    с env var: PAC_AUTH_PROFILE_DIRECTORY=C:\Temp\DeployPortal\pac_auth_2_x9y8z7w6v5u4...
 3. Auth profile сохраняется ТОЛЬКО в эту папку (не пересекается с #1!)
 4. Валидирует через pac auth who
@@ -122,12 +122,12 @@ await deployService.DeployPackageAsync(
 2. В логах увидите:
    ```
    [Isolation] Using dedicated PAC auth directory: C:\Temp\DeployPortal\pac_auth_1_...
-   [Validation] Confirmed connected to correct environment: cst-hfx-tst-07.crm.dynamics.com
+   [Validation] Confirmed connected to correct environment: target-env.crm.dynamics.com
    ```
 3. После завершения проверьте что папки `pac_auth_*` удалены
 4. В логах деплоймента проверьте:
    ```
-   Deployment Target Organization Uri: https://cst-hfx-tst-07.crm.dynamics.com/
+   Deployment Target Organization Uri: https://target-env.crm.dynamics.com/
    ```
 
 ### При ошибке валидации:
@@ -135,7 +135,7 @@ await deployService.DeployPackageAsync(
 Если Service Principal подключится к неправильному энвайронменту, деплоймент упадёт с сообщением:
 ```
 PAC authentication verification FAILED! 
-Expected environment: cst-hfx-tst-07.crm.dynamics.com, 
+Expected environment: target-env.crm.dynamics.com, 
 but 'pac auth who' returned different environment.
 ```
 

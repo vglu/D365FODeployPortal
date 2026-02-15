@@ -63,6 +63,6 @@ If you need to create the very first release by hand (without a tag):
 2. Choose a tag (create e.g. `v1.4.0`) or an existing commit.
 3. Set the title, e.g. `v1.4.0`.
 4. Paste the contents of `documents/RELEASE_NOTES_v1.4.0.md` into the description.
-5. Attach the ZIP manually (build with `.\publish.ps1` and zip the `publish/` folder).
+5. Attach the ZIP manually (build with `.\scripts\publish.ps1` and zip the `publish/` folder).
 
 For subsequent releases, using tags and the automated workflow is recommended.

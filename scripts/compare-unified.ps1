@@ -8,6 +8,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
+$testProj = Join-Path $ProjectRoot "src\DeployPortal.Tests\DeployPortal.Tests.csproj"
 
 $OurOutputDir = [System.IO.Path]::Combine(
     [System.IO.Path]::GetDirectoryName($LcsZip),
@@ -28,15 +30,15 @@ if (-not (Test-Path $ManualUnifiZip)) { Write-Host "Manual Unifi zip not found."
 # ----- 1. Run conversion -----
 Write-Host "--- Step 1: Converting LCS -> Unified (built-in) ---" -ForegroundColor Yellow
 $env:DeployPortal_TestLcsPackagePath = $LcsZip
-$null = & dotnet test "d:\Projects\D365FODeployPortal\src\DeployPortal.Tests\DeployPortal.Tests.csproj" `
+$null = & dotnet test $testProj `
     --filter "FullyQualifiedName~ConvertRealLcsPackage_FromEnv" `
     --no-build `
     --logger "console;verbosity=minimal" 2>&1
 
 if (-not (Test-Path $OurOutputDir)) {
     Write-Host "Conversion output folder not found. Run with -- build first." -ForegroundColor Red
-    & dotnet build "d:\Projects\D365FODeployPortal\src\DeployPortal.Tests\DeployPortal.Tests.csproj" -v q
-    $null = & dotnet test "d:\Projects\D365FODeployPortal\src\DeployPortal.Tests\DeployPortal.Tests.csproj" `
+    & dotnet build $testProj -v q
+    $null = & dotnet test $testProj `
         --filter "FullyQualifiedName~ConvertRealLcsPackage_FromEnv" `
         --logger "console;verbosity=minimal" 2>&1
 }

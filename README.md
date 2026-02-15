@@ -10,7 +10,7 @@ A web-based tool for deploying Microsoft Dynamics 365 Finance & Operations packa
 - **Multi-Environment Deploy** — Select a package and one or more target environments, then deploy to all at once.
 - **Real-Time Logs** — Watch deployment output live via SignalR streaming.
 - **Deployment History** — Full history of all deployments, filterable by package, environment, status, and date.
-- **Import from Script** — Paste output of `Setup-ServicePrincipal.ps1` to bulk-create environments with parsed credentials.
+- **Import from Script** — Paste output of `scripts/Setup-ServicePrincipal.ps1` to bulk-create environments with parsed credentials.
 - **Configurable Paths** — All tool paths (ModelUtil, PAC CLI, storage) configurable via Settings page. No hardcoded paths.
 - **Self-Contained Distribution** — Publish as a single folder with embedded .NET Runtime. No prerequisites on the target machine (except external tools).
 
@@ -52,10 +52,10 @@ Summary of all ways to run and use the application:
 
 | Scenario | Command / Link |
 |----------|-----------------|
-| **Development (local)** | **PowerShell:** `.\run.ps1` or `dotnet watch --project src/DeployPortal --urls "http://localhost:5137"` — **CMD:** `powershell -NoProfile -File run.ps1` |
+| **Development (local)** | **PowerShell:** `.\scripts\run.ps1` or `dotnet watch --project src/DeployPortal --urls "http://localhost:5137"` — **CMD:** `powershell -NoProfile -File scripts\run.ps1` |
 | **Docker — web UI** | `docker compose up -d` → open http://localhost:5000 |
 | **Docker — CLI conversion** | See [Command-line conversion](#command-line-conversion-cli) below (paths for Windows CMD, PowerShell, Linux). |
-| **Published app (Windows)** | **PowerShell:** `.\publish.ps1` — **CMD:** `powershell -NoProfile -File publish.ps1` — then run `publish\start.cmd` or `publish\DeployPortal.exe` |
+| **Published app (Windows)** | **PowerShell:** `.\scripts\publish.ps1` — **CMD:** `powershell -NoProfile -File scripts\publish.ps1` — then run `publish\start.cmd` or `publish\DeployPortal.exe` |
 | **CLI conversion (local, no UI)** | **PowerShell:** `dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip" "C:\Packages\MyUnified.zip"` — **CMD:** `dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip" "C:\Packages\MyUnified.zip"` |
 
 **Releases & Packages:** ready-made builds — [GitHub Releases](https://github.com/vglu/D365FODeployPortal/releases) (Windows ZIP) and image [ghcr.io/vglu/d365fo-deploy-portal](https://github.com/vglu/D365FODeployPortal/pkgs/container/d365fo-deploy-portal). See [documents/RELEASES_AND_PACKAGES.md](documents/RELEASES_AND_PACKAGES.md).
@@ -75,14 +75,14 @@ See sections below for details.
 
 **PowerShell (from project root):**
 ```powershell
-.\run.ps1
+.\scripts\run.ps1
 # Or manually:
 dotnet watch --project src/DeployPortal --urls "http://localhost:5137"
 ```
 
 **CMD (from project root):**
 ```cmd
-powershell -NoProfile -File run.ps1
+powershell -NoProfile -File scripts\run.ps1
 REM Or manually:
 dotnet watch --project src/DeployPortal --urls "http://localhost:5137"
 ```
@@ -256,12 +256,12 @@ To create a self-contained application that can run on any Windows machine witho
 
 **PowerShell:**
 ```powershell
-.\publish.ps1
+.\scripts\publish.ps1
 ```
 
 **CMD:**
 ```cmd
-powershell -NoProfile -File publish.ps1
+powershell -NoProfile -File scripts\publish.ps1
 ```
 
 This creates a `publish/` folder containing:
@@ -271,7 +271,8 @@ publish/
 ├── DeployPortal.exe              # Self-contained application
 ├── start.cmd                     # Double-click to launch (opens browser automatically)
 ├── appsettings.json              # Default settings (empty paths — configure via UI)
-├── Setup-ServicePrincipal.ps1    # Script for Azure AD setup
+├── Setup-ServicePrincipal.ps1    # Azure AD setup (copied from repo scripts/)
+├── check-prerequisites.ps1       # Pre-flight check (copied from repo scripts/)
 ├── Setup-ServicePrincipal-Manual.md  # Manual instructions for admin
 ├── README.md                     # Quick start for target machine
 └── ... (runtime files)
@@ -281,16 +282,16 @@ publish/
 
 **PowerShell:**
 ```powershell
-.\publish.ps1
-.\publish.ps1 -OutputDir "C:\Deploy\DeployPortal"
-.\publish.ps1 -SingleFile
+.\scripts\publish.ps1
+.\scripts\publish.ps1 -OutputDir "C:\Deploy\DeployPortal"
+.\scripts\publish.ps1 -SingleFile
 ```
 
 **CMD:** (paths work the same)
 ```cmd
-powershell -NoProfile -File publish.ps1
-powershell -NoProfile -File publish.ps1 -OutputDir "C:\Deploy\DeployPortal"
-powershell -NoProfile -File publish.ps1 -SingleFile
+powershell -NoProfile -File scripts\publish.ps1
+powershell -NoProfile -File scripts\publish.ps1 -OutputDir "C:\Deploy\DeployPortal"
+powershell -NoProfile -File scripts\publish.ps1 -SingleFile
 ```
 
 ## Transferring to Another Machine
@@ -306,7 +307,7 @@ Copy the entire `publish/` folder to the target machine. That's it — .NET Runt
 | .NET Runtime | **No** | — | Bundled in self-contained publish |
 | ModelUtil.exe | Only for LCS→Unified conversion | When deploying LCS packages | Installed with [D365FO development tools](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-tools/models) |
 | PAC CLI | Only for deployment | When deploying to Power Platform | `dotnet tool install --global Microsoft.PowerApps.CLI.Tool` |
-| Azure AD Service Principal | Only for deployment | For non-interactive PAC auth | Run `Setup-ServicePrincipal.ps1` or follow `Setup-ServicePrincipal-Manual.md` |
+| Azure AD Service Principal | Only for deployment | For non-interactive PAC auth | Run `scripts\Setup-ServicePrincipal.ps1` or follow `documents/Setup-ServicePrincipal-Manual.md` |
 
 > **Note:** If you only upload already-Unified packages, `ModelUtil.exe` is not needed at all.
 
@@ -322,7 +323,7 @@ Copy the entire `publish/` folder to the target machine. That's it — .NET Runt
    - `PAC CLI` path (if not in system PATH — auto-detected otherwise)
    - Package storage path (defaults to `Packages/` subdirectory)
 5. **Go to Environments** → add environments:
-   - **Option A:** Click "Import from Script" → paste output of `Setup-ServicePrincipal.ps1`
+   - **Option A:** Click "Import from Script" → paste output of `scripts\Setup-ServicePrincipal.ps1`
    - **Option B:** Manually enter Name, URL, Tenant ID, Application ID, Client Secret
 6. **Upload packages** and start deploying
 
@@ -346,16 +347,16 @@ A Service Principal (App Registration) in Azure AD is required for non-interacti
 
 **PowerShell (from folder containing the script):**
 ```powershell
-.\Setup-ServicePrincipal.ps1
-.\Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
-.\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
+.\scripts\Setup-ServicePrincipal.ps1
+.\scripts\Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
+.\scripts\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
 ```
 
 **CMD (same folder):**
 ```cmd
-powershell -NoProfile -File Setup-ServicePrincipal.ps1
-powershell -NoProfile -File Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
-powershell -NoProfile -File Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
+powershell -NoProfile -File scripts\Setup-ServicePrincipal.ps1
+powershell -NoProfile -File scripts\Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
+powershell -NoProfile -File scripts\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
 ```
 
 **Required permissions to run:** Global Administrator or Application Administrator in Azure AD, System Administrator in Power Platform environments.
@@ -412,7 +413,7 @@ Leave the setting empty to keep the current “minimal” LCS output.
 
 **Round-trip quality:** With the **built-in template** (LcsSkeleton), the round-trip LCS is intentionally minimal: `HotfixInstallationInfo.xml`, modules as `dynamicsax-*.zip` in `Packages/files`, and `Scripts/License`. There is no full Scripts content (exe, DLLs, install scripts) and no `.nupkg` in Packages — the converter does not generate those. If you need a round-trip LCS that matches the original (same Scripts, layout, etc.), set **LCS Template** to a real LCS package (unpacked folder or .zip) that you have from the LCS asset library or your own export.
 
-**Creating a template from your own package:** To use a full LCS package (e.g. a main/production package from the asset library) as the template, first remove license files so the template does not carry production licenses. Use the script `New-LcsTemplateFromPackage.ps1`: it extracts the package, deletes `AOSService/Scripts/License/*`, and optionally removes `Packages/files/*.zip` and `Packages/*.nupkg` so the template is a skeleton only. Example paths: **PowerShell** `.\New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip" -RemovePackagePayload` — **CMD** `powershell -NoProfile -File New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip" -RemovePackagePayload`. Then set **LcsTemplatePath** in Settings to the resulting `*_NoLicenses.zip` (or copy it to `Resources/LcsTemplate/` and point to it).
+**Creating a template from your own package:** To use a full LCS package (e.g. a main/production package from the asset library) as the template, first remove license files so the template does not carry production licenses. Use the script `scripts/New-LcsTemplateFromPackage.ps1`: it extracts the package, deletes `AOSService/Scripts/License/*`, and optionally removes `Packages/files/*.zip` and `Packages/*.nupkg` so the template is a skeleton only. Example paths: **PowerShell** `.\scripts\New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip" -RemovePackagePayload` — **CMD** `powershell -NoProfile -File scripts\New-LcsTemplateFromPackage.ps1 -SourceZip "C:\Packages\MyProduction.zip" -RemovePackagePayload`. Then set **LcsTemplatePath** in Settings to the resulting `*_NoLicenses.zip` (or copy it to `Resources/LcsTemplate/` and point to it).
 
 ### Data Storage
 
@@ -427,7 +428,7 @@ The portal exposes a REST API for package management: list, upload, convert (LCS
 
 - **Swagger UI:** `http://localhost:5000/swagger` (or your base URL + `/swagger`)
 
-**Base URL:** In the examples below, `BASE_URL` is `http://localhost:5000` (Docker) or `http://localhost:5137` (local `run.ps1`). Replace as needed.
+**Base URL:** In the examples below, `BASE_URL` is `http://localhost:5000` (Docker) or `http://localhost:5137` (local `.\scripts\run.ps1`). Replace as needed.
 
 ### Endpoints and curl examples
 
@@ -532,10 +533,13 @@ If you upload an already-Unified package, the conversion step is skipped.
 ```
 d:\Projects\Project4\
 ├── README.md                          # This file
-├── run.ps1                            # Dev run script (hot reload)
-├── publish.ps1                        # Build for distribution
-├── Setup-ServicePrincipal.ps1         # Azure AD automation
-├── Setup-ServicePrincipal-Manual.md   # Admin instructions
+├── scripts/
+│   ├── run.ps1                        # Dev run script (hot reload)
+│   ├── publish.ps1                    # Build for distribution
+│   ├── Setup-ServicePrincipal.ps1     # Azure AD automation
+│   └── ...                            # check-prerequisites.ps1, run-tests.ps1, etc.
+├── documents/
+│   └── Setup-ServicePrincipal-Manual.md   # Admin instructions
 ├── Project4.sln                       # Solution file
 └── src/
     ├── DeployPortal/                  # Main Blazor Server application

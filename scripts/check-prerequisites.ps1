@@ -17,6 +17,9 @@ param(
     [string]$Mode = "Development"
 )
 
+# When run from repo root as .\scripts\check-prerequisites.ps1, use parent as project root; when run from publish folder (copied script), use script dir
+$ProjectRoot = if ((Split-Path $PSScriptRoot -Leaf) -eq 'scripts') { Split-Path $PSScriptRoot -Parent } else { $PSScriptRoot }
+
 # ─────────────────────────────────────────────
 #  Helpers
 # ─────────────────────────────────────────────
@@ -258,9 +261,9 @@ foreach ($searchDir in $searchPaths) {
 }
 
 # Also check usersettings.json
-$settingsFile = Join-Path $PSScriptRoot "src\DeployPortal\bin\Debug\net9.0\usersettings.json"
+$settingsFile = Join-Path $ProjectRoot "src\DeployPortal\bin\Debug\net9.0\usersettings.json"
 if (-not (Test-Path $settingsFile)) {
-    $settingsFile = Join-Path $PSScriptRoot "publish\usersettings.json"
+    $settingsFile = Join-Path $ProjectRoot "publish\usersettings.json"
 }
 if (Test-Path $settingsFile) {
     try {
@@ -285,7 +288,7 @@ if ($modelUtilFound) {
 
 Write-Header "Disk Space"
 
-$scriptDrive = (Get-Item $PSScriptRoot).PSDrive
+$scriptDrive = (Get-Item $ProjectRoot).PSDrive
 $freeGB = [math]::Round(($scriptDrive.Free / 1GB), 1)
 $totalGB = [math]::Round((($scriptDrive.Free + $scriptDrive.Used) / 1GB), 1)
 
@@ -342,14 +345,14 @@ foreach ($ep in $endpoints) {
 if ($Mode -eq "Development") {
     Write-Header "Project Files"
 
-    $projectFile = Join-Path $PSScriptRoot "src\DeployPortal\DeployPortal.csproj"
+    $projectFile = Join-Path $ProjectRoot "src\DeployPortal\DeployPortal.csproj"
     if (Test-Path $projectFile) {
         Write-CheckResult "Project file" "OK" "src\DeployPortal\DeployPortal.csproj"
     } else {
         Write-CheckResult "Project file" "FAIL" "DeployPortal.csproj not found at expected path"
     }
 
-    $solutionFile = Join-Path $PSScriptRoot "Project4.sln"
+    $solutionFile = Join-Path $ProjectRoot "Project4.sln"
     if (Test-Path $solutionFile) {
         Write-CheckResult "Solution file" "OK" "Project4.sln"
     } else {
@@ -357,7 +360,7 @@ if ($Mode -eq "Development") {
     }
 
     # Template files
-    $templateDir = Join-Path $PSScriptRoot "src\DeployPortal\Resources\UnifiedTemplate"
+    $templateDir = Join-Path $ProjectRoot "src\DeployPortal\Resources\UnifiedTemplate"
     $templateDll = Join-Path $templateDir "TemplatePackage.dll"
     if (Test-Path $templateDll) {
         $templateCount = (Get-ChildItem $templateDir -Recurse -File).Count
@@ -393,13 +396,13 @@ if ($Mode -eq "Production") {
     if (Test-Path $exeInScriptDir) {
         $publishDir = $PSScriptRoot
     } else {
-        $publishDir = Join-Path $PSScriptRoot "publish"
+        $publishDir = Join-Path $ProjectRoot "publish"
     }
     $exePath = Join-Path $publishDir "DeployPortal.exe"
 
     if (Test-Path $exePath) {
         $exeSize = [math]::Round((Get-Item $exePath).Length / 1MB, 1)
-        $location = if ($publishDir -eq $PSScriptRoot) { "current folder" } else { "publish/" }
+        $location = if ($publishDir -eq $PSScriptRoot) { "current folder" } else { "publish\" }
         Write-CheckResult "DeployPortal.exe" "OK" "Found (${exeSize} MB) in $location"
 
         $templateDll = Join-Path $publishDir "Resources\UnifiedTemplate\TemplatePackage.dll"
@@ -407,11 +410,11 @@ if ($Mode -eq "Production") {
             Write-CheckResult "Unified Templates" "OK" "Found in Resources/UnifiedTemplate/"
         } else {
             Write-CheckResult "Unified Templates" "FAIL" "Missing TemplatePackage.dll" `
-                "Rebuild with: .\publish.ps1 or copy from repo"
+                "Rebuild with: .\scripts\publish.ps1 or copy from repo"
         }
     } else {
         Write-CheckResult "DeployPortal.exe" "FAIL" "Not found" `
-            "Run from repo root (.\check-prerequisites.ps1 -Mode Production) or from the publish folder where DeployPortal.exe is located"
+            "Run from repo root (.\scripts\check-prerequisites.ps1 -Mode Production) or from the publish folder where DeployPortal.exe is located"
     }
 }
 
@@ -496,18 +499,18 @@ Write-Host "  =============================================" -ForegroundColor Cy
 Write-Host ""
 
 if ($Mode -eq "Development") {
-    Write-Host "    1. Start the app:        .\run.ps1" -ForegroundColor White
+    Write-Host "    1. Start the app:        .\scripts\run.ps1" -ForegroundColor White
     Write-Host "    2. Open in browser:      http://localhost:5076" -ForegroundColor White
     Write-Host "    3. Configure Settings:   /settings page" -ForegroundColor White
     Write-Host "    4. Add environments:     /environments page" -ForegroundColor White
     Write-Host ""
     Write-Host "    To publish for distribution:" -ForegroundColor Gray
-    Write-Host "      .\publish.ps1" -ForegroundColor White
+    Write-Host "      .\scripts\publish.ps1" -ForegroundColor White
 } else {
     Write-Host "    1. Run:    start.cmd  (or DeployPortal.exe)" -ForegroundColor White
     Write-Host "    2. Open:   http://localhost:5000" -ForegroundColor White
     Write-Host "    3. Setup:  Go to Settings and configure paths" -ForegroundColor White
-    Write-Host "    4. Auth:   Run Setup-ServicePrincipal.ps1 or" -ForegroundColor White
+    Write-Host "    4. Auth:   Run scripts\Setup-ServicePrincipal.ps1 or" -ForegroundColor White
     Write-Host "               follow documents/Setup-ServicePrincipal-Manual.md" -ForegroundColor White
 }
 

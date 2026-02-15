@@ -158,18 +158,18 @@ docker logs -f deploy-portal
 
 ```
 [Isolation] Using dedicated PAC auth directory: /tmp/DeployPortal/pac_auth_3_4a5b6c7d...
-Authenticating to cst-hfx-tst-07.crm.dynamics.com (Service Principal)...
+Authenticating to target-env.crm.dynamics.com (Service Principal)...
 
 [CHECK 1 - PRE-DEPLOY]
 Verifying connection (pac auth who)...
-[Validation] Confirmed connected to correct environment: cst-hfx-tst-07.crm.dynamics.com ✓
+[Validation] Confirmed connected to correct environment: target-env.crm.dynamics.com ✓
 
 Starting deployment to Cst-hfx-tst-07...
 Deployment completed.
 
 [CHECK 2 - POST-DEPLOY]
 [Post-Deploy Validation] Verifying deployment target from log file...
-[Post-Deploy Validation] ✓ Organization Uri from log: https://cst-hfx-tst-07.crm.dynamics.com/...
+[Post-Deploy Validation] ✓ Organization Uri from log: https://target-env.crm.dynamics.com/...
 [Post-Deploy Validation] ✓ Confirmed: package was deployed to correct environment. ✓✓
 
 [Cleanup] Removed isolated PAC auth directory: /tmp/DeployPortal/pac_auth_3_4a5b6c7d...
@@ -198,8 +198,8 @@ ls -la /tmp/DeployPortal/
 The container supports parallel deployments to **multiple environments at once**:
 
 ```
-Deployment #1 → /tmp/DeployPortal/pac_auth_1_abc123/ → cst-hfx-tst-07
-Deployment #2 → /tmp/DeployPortal/pac_auth_2_xyz789/ → cst-hfx-tst-05
+Deployment #1 → /tmp/DeployPortal/pac_auth_1_abc123/ → target-env
+Deployment #2 → /tmp/DeployPortal/pac_auth_2_xyz789/ → env-b
 Deployment #3 → /tmp/DeployPortal/pac_auth_3_def456/ → infra-tst-01
 
 All three run in parallel, no conflicts! ✓

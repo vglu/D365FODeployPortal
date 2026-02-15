@@ -8,26 +8,30 @@ param(
     [switch]$IncludeE2E
 )
 
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
 $filter = "FullyQualifiedName!~E2ETests"
 if (-not $IncludeE2E) {
     $filter += "&FullyQualifiedName!~ConvertRealLcsPackage_FromEnv"
 }
+$testProj = Join-Path $ProjectRoot "src\DeployPortal.Tests\DeployPortal.Tests.csproj"
 $args = @(
-    "test", "src\DeployPortal.Tests\DeployPortal.Tests.csproj",
+    "test", $testProj,
     "--filter", $filter
 )
 if ($Coverage) {
-    $args += @("--collect:`"XPlat Code Coverage`"", "--results-directory", "TestResults")
-    $runsettings = Join-Path $PSScriptRoot "coverlet.runsettings"
+    $args += @("--collect:`"XPlat Code Coverage`"", "--results-directory", (Join-Path $ProjectRoot "TestResults"))
+    $runsettings = Join-Path $ProjectRoot "coverlet.runsettings"
     if (Test-Path $runsettings) {
         $args += @("--settings", $runsettings)
     }
 }
 
+Push-Location $ProjectRoot
 & dotnet @args
 $exitCode = $LASTEXITCODE
+Pop-Location
 if ($Coverage -and $exitCode -eq 0) {
-    $latest = Get-ChildItem TestResults -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $latest = Get-ChildItem (Join-Path $ProjectRoot "TestResults") -Directory -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     if ($latest) {
         $cov = Join-Path $latest.FullName "coverage.cobertura.xml"
         if (Test-Path $cov) {

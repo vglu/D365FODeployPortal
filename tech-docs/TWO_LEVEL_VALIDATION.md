@@ -78,7 +78,7 @@ onLog?.Invoke($"[Pre-Deploy Validation] ✓ Matched by {matchType}: {context.Env
 
 var logContent = await File.ReadAllTextAsync(logFilePath);
 
-// Find: "Deployment Target Organization Uri: https://cst-hfx-tst-07.crm.dynamics.com/..."
+// Find: "Deployment Target Organization Uri: https://target-env.crm.dynamics.com/..."
 var uriLinePrefix = "Deployment Target Organization Uri:";
 var uriLine = logContent
     .Split('\n')
@@ -151,22 +151,22 @@ END
 
 ```
 [Isolation] Using dedicated PAC auth directory: C:\Temp\DeployPortal\pac_auth_3_abc123...
-Authenticating to cst-hfx-tst-07.crm.dynamics.com (Service Principal)...
+Authenticating to target-env.crm.dynamics.com (Service Principal)...
 Verifying connection (pac auth who)...
 Connection verified.
 
 [CHECK 1 - PRE-DEPLOY]
-[Validation] Confirmed connected to correct environment: cst-hfx-tst-07.crm.dynamics.com ✓
+[Validation] Confirmed connected to correct environment: target-env.crm.dynamics.com ✓
 
-Starting deployment to Cst-hfx-tst-07...
+Starting deployment to Example-Target-Env...
 Package: D:\Temp\...\TemplatePackage.dll
 ...
-Deployment to Cst-hfx-tst-07 completed.
+Deployment to Example-Target-Env completed.
 
 [CHECK 2 - POST-DEPLOY]
 [Post-Deploy Validation] Verifying deployment target from log file...
-[Post-Deploy Validation] ✓ Organization Uri from log: https://cst-hfx-tst-07.crm.dynamics.com/XRMServices/...
-[Post-Deploy Validation] ✓ Matches expected environment: cst-hfx-tst-07.crm.dynamics.com
+[Post-Deploy Validation] ✓ Organization Uri from log: https://target-env.crm.dynamics.com/XRMServices/...
+[Post-Deploy Validation] ✓ Matches expected environment: target-env.crm.dynamics.com
 [Post-Deploy Validation] ✓ Confirmed: package was deployed to correct environment.
 
 [Cleanup] Removed isolated PAC auth directory: C:\Temp\DeployPortal\pac_auth_3_abc123...
@@ -176,18 +176,18 @@ Deployment to Cst-hfx-tst-07 completed.
 
 ```
 [Isolation] Using dedicated PAC auth directory: C:\Temp\DeployPortal\pac_auth_3_abc123...
-Authenticating to cst-hfx-tst-07.crm.dynamics.com (Service Principal)...
+Authenticating to target-env.crm.dynamics.com (Service Principal)...
 Verifying connection (pac auth who)...
 Connection verified.
 
 [CHECK 1 - PRE-DEPLOY]
 [ERROR] PAC authentication verification FAILED!
-Expected environment: Cst-hfx-tst-07 (cst-hfx-tst-07.crm.dynamics.com)
+Expected environment: Example-Target-Env (target-env.crm.dynamics.com)
 But 'pac auth who' output does not contain expected URL.
 
 'pac auth who' output:
 Environment ID: <example-id>...
-Environment Url: https://c365afspmunified.crm.dynamics.com/
+Environment Url: https://wrong-env.crm.dynamics.com/
 Tenant ID: ...
 
 Deployment FAILED (package NOT applied) ✓
@@ -196,17 +196,17 @@ Deployment FAILED (package NOT applied) ✓
 ### CHECK 2 failed (deploy went to wrong env):
 
 ```
-Deployment to Cst-hfx-tst-07 completed.
+Deployment to Example-Target-Env completed.
 
 [CHECK 2 - POST-DEPLOY]
 [Post-Deploy Validation] Verifying deployment target from log file...
-[Post-Deploy Validation] ✓ Organization Uri from log: https://c365afspmunified.crm.dynamics.com/...
+[Post-Deploy Validation] ✓ Organization Uri from log: https://wrong-env.crm.dynamics.com/...
 
 [ERROR] ❌ POST-DEPLOYMENT VALIDATION FAILED! ❌
 Package was deployed to WRONG environment!
 
-Expected environment: Cst-hfx-tst-07 (cst-hfx-tst-07.crm.dynamics.com)
-Actual deployment target (from log): https://c365afspmunified.crm.dynamics.com/XRMServices/...
+Expected environment: Example-Target-Env (target-env.crm.dynamics.com)
+Actual deployment target (from log): https://wrong-env.crm.dynamics.com/XRMServices/...
 
 This indicates a critical deployment routing issue. The package is now on the wrong environment!
 

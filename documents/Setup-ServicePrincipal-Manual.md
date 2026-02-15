@@ -4,7 +4,7 @@
 
 **Purpose:** Enable non-interactive (browserless) authentication for the PAC CLI tool to automatically deploy Dynamics 365 Finance & Operations packages to the specified Power Platform environments.
 
-> **Automation:** Instead of performing these steps manually, you can run the `Setup-ServicePrincipal.ps1` script from this folder. It will execute all steps automatically.
+> **Automation:** Instead of performing these steps manually, you can run the `scripts/Setup-ServicePrincipal.ps1` script from the project root. It will execute all steps automatically.
 
 ---
 
@@ -12,19 +12,19 @@
 
 ```powershell
 # 1. Full setup — creates SP and registers in all default environments
-.\Setup-ServicePrincipal.ps1
+.\scripts\Setup-ServicePrincipal.ps1
 
 # 2. Full setup with a custom environment list
-.\Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
+.\scripts\Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
 
 # 3. Add a SINGLE new environment to an existing SP
-.\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
+.\scripts\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com"
 
 # 4. Add MULTIPLE new environments to an existing SP
-.\Setup-ServicePrincipal.ps1 -AddEnvironment "env-a.crm.dynamics.com","env-b.crm.dynamics.com"
+.\scripts\Setup-ServicePrincipal.ps1 -AddEnvironment "env-a.crm.dynamics.com","env-b.crm.dynamics.com"
 
 # 5. Add an environment to an SP with a custom display name
-.\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com" -AppDisplayName "My-Custom-SP"
+.\scripts\Setup-ServicePrincipal.ps1 -AddEnvironment "new-env.crm.dynamics.com" -AppDisplayName "My-Custom-SP"
 ```
 
 When using `-AddEnvironment`, the script does **not** create a new Client Secret and does **not** modify API permissions — it only registers the Application User in the specified environments.
@@ -150,7 +150,7 @@ If the Service Principal was created earlier and you need to add a new environme
 ### Automatically (script):
 
 ```powershell
-.\Setup-ServicePrincipal.ps1 -AddEnvironment "new-environment.crm.dynamics.com"
+.\scripts\Setup-ServicePrincipal.ps1 -AddEnvironment "new-environment.crm.dynamics.com"
 ```
 
 ### Manually (portal):

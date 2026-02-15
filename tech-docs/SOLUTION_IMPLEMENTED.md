@@ -14,13 +14,13 @@ Implemented **Option 3: Isolated PAC_AUTH_PROFILE_DIR** to guarantee connection 
 PAC CLI uses global auth profile storage:
 %USERPROFILE%\.pac\auth\
 
-Deployment #1: pac auth create --environment cst-hfx-tst-07
+Deployment #1: pac auth create --environment target-env.crm.dynamics.com
                ↓
            creates profile1 in global folder
                ↓
            but SP has access to multiple envs
                ↓
-           PAC CLI picks c365afspmunified ❌
+           PAC CLI picks wrong-env ❌
                ↓
            deployment goes to WRONG environment!
 ```
@@ -28,7 +28,7 @@ Deployment #1: pac auth create --environment cst-hfx-tst-07
 ### After changes (solution with dual validation):
 
 ```
-Deployment #1 (cst-hfx-tst-07):
+Deployment #1 (target-env):
    isolatedAuthDir = C:\Temp\DeployPortal\pac_auth_1_abc123...
    PAC_AUTH_PROFILE_DIRECTORY = isolatedAuthDir
    ↓
@@ -48,7 +48,7 @@ Deployment #1 (cst-hfx-tst-07):
    ↓
    folder removed
 
-Deployment #2 (in parallel to cst-hfx-tst-05):
+Deployment #2 (in parallel to env-b):
    isolatedAuthDir = C:\Temp\DeployPortal\pac_auth_2_xyz789...
    PAC_AUTH_PROFILE_DIRECTORY = isolatedAuthDir
    ↓
@@ -145,12 +145,12 @@ On the next deployment you’ll see **two-level validation**:
 
 ```
 [Isolation] Using dedicated PAC auth directory: C:\Temp\DeployPortal\pac_auth_3_4a5b6c7d8e9f...
-Authenticating to cst-hfx-tst-07.crm.dynamics.com (Service Principal)...
+Authenticating to target-env.crm.dynamics.com (Service Principal)...
 Verifying connection (pac auth who)...
 Connection verified.
 
 [CHECK 1 - PRE-DEPLOY]
-[Validation] Confirmed connected to correct environment: cst-hfx-tst-07.crm.dynamics.com ✓
+[Validation] Confirmed connected to correct environment: target-env.crm.dynamics.com ✓
 
 Starting deployment to Cst-hfx-tst-07...
 Package: D:\Temp\...\TemplatePackage.dll
@@ -161,8 +161,8 @@ Deployment to Cst-hfx-tst-07 completed.
 
 [CHECK 2 - POST-DEPLOY]
 [Post-Deploy Validation] Verifying deployment target from log file...
-[Post-Deploy Validation] ✓ Organization Uri from log: https://cst-hfx-tst-07.crm.dynamics.com/XRMServices/...
-[Post-Deploy Validation] ✓ Matches expected environment: cst-hfx-tst-07.crm.dynamics.com
+[Post-Deploy Validation] ✓ Organization Uri from log: https://target-env.crm.dynamics.com/XRMServices/...
+[Post-Deploy Validation] ✓ Matches expected environment: target-env.crm.dynamics.com
 [Post-Deploy Validation] ✓ Confirmed: package was deployed to correct environment.
 
 [Cleanup] Removed isolated PAC auth directory: C:\Temp\DeployPortal\pac_auth_3_4a5b6c7d8e9f...
@@ -172,10 +172,10 @@ Deployment to Cst-hfx-tst-07 completed.
 
 **Scenario 1: PAC auth connected to wrong env (CHECK 1 failed):**
 ```
-[Validation] Confirmed connected to correct environment: cst-hfx-tst-07.crm.dynamics.com
+[Validation] Confirmed connected to correct environment: target-env.crm.dynamics.com
 Connection verified.
 [ERROR] PAC authentication verification FAILED! 
-        Expected environment: cst-hfx-tst-07.crm.dynamics.com, 
+        Expected environment: target-env.crm.dynamics.com, 
         but 'pac auth who' returned different environment.
 
 Deployment FAILED (before deploy — nothing applied) ✓
@@ -185,11 +185,11 @@ Deployment FAILED (before deploy — nothing applied) ✓
 ```
 Deployment to Cst-hfx-tst-07 completed.
 [Post-Deploy Validation] Verifying deployment target from log file...
-[Post-Deploy Validation] ✓ Organization Uri from log: https://c365afspmunified.crm.dynamics.com/...
+[Post-Deploy Validation] ✓ Organization Uri from log: https://wrong-env.crm.dynamics.com/...
 [ERROR] ❌ POST-DEPLOYMENT VALIDATION FAILED! ❌
         Package was deployed to WRONG environment!
-        Expected: cst-hfx-tst-07.crm.dynamics.com
-        Actual: c365afspmunified.crm.dynamics.com
+        Expected: target-env.crm.dynamics.com
+        Actual: wrong-env.crm.dynamics.com
 
 Deployment marked as FAILED (package already applied to wrong env) ⚠️
 ```
@@ -219,7 +219,7 @@ Select-String "Deployment Target Organization Uri" $logPath
 
 You should see:
 ```
-Deployment Target Organization Uri: https://cst-hfx-tst-07.crm.dynamics.com/...
+Deployment Target Organization Uri: https://target-env.crm.dynamics.com/...
 ```
 
 ### Step 4: Test parallel deployments

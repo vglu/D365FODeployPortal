@@ -4,6 +4,7 @@
     and comparing output with ModelUtil.exe conversion.
 #>
 $ErrorActionPreference = "Stop"
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
 
 # Set paths to your ModelUtil and test package, or use env vars (ModelUtilPath, TestLcsPackagePath)
 $ModelUtil = if ($env:ModelUtilPath) { $env:ModelUtilPath } else { "$env:LOCALAPPDATA\Microsoft\Dynamics365\*\PackagesLocalDirectory\bin\ModelUtil.exe" }
@@ -27,7 +28,8 @@ $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 # ===== Step 1: Copy template files =====
 Write-Host "`n--- Copying template files ---" -ForegroundColor Yellow
-$templateDir = "D:\Projects\Project4\src\DeployPortal\bin\Debug\net9.0\Resources\UnifiedTemplate"
+$templateDir = Join-Path $ProjectRoot "src\DeployPortal\bin\Debug\net9.0\Resources\UnifiedTemplate"
+if (-not (Test-Path $templateDir)) { $templateDir = Join-Path $ProjectRoot "src\DeployPortal\Resources\UnifiedTemplate" }
 Copy-Item "$templateDir\TemplatePackage.dll" "$builtInOutput\TemplatePackage.dll"
 Copy-Item "$templateDir\solution.xml" "$assetsDir\solution.xml"
 Copy-Item "$templateDir\customizations.xml" "$assetsDir\customizations.xml"

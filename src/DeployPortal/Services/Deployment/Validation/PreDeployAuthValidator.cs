@@ -31,7 +31,7 @@ public class PreDeployAuthValidator : IDeploymentValidator
         var whoOutput = context.PacAuthWhoOutput;
         var whoOutputLower = whoOutput.ToLowerInvariant();
 
-        // Check 1: Try to match by URL (e.g., "cst-hfx-tst-07.crm.dynamics.com")
+        // Check 1: Try to match by URL (e.g., "target-env.crm.dynamics.com")
         // This works for Service Principal authentication
         var urlMatch = whoOutputLower.Contains(expectedUrl);
 
