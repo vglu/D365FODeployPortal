@@ -70,6 +70,7 @@ docker pull vglu/d365fo-deploy-portal:latest
 
 ## 🚀 What's Next?
 
+- [v1.5.4 Release Notes](RELEASE_NOTES_v1.5.4.md) — PAC auth isolation, Friendly Name options, deploy status fix
 - [v1.5.0 Release Notes](RELEASE_NOTES_v1.5.0.md) — SOLID refactoring, tests, E2E
 - [v1.4.0 Release Notes](RELEASE_NOTES_v1.4.0.md) — Deployment History Archive
 
