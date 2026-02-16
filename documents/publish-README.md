@@ -38,3 +38,7 @@ PowerShell: `.\DeployPortal.exe --urls "http://localhost:8080"`
 **Remote access:**  
 CMD: `DeployPortal.exe --urls "http://0.0.0.0:5000"`  
 PowerShell: `.\DeployPortal.exe --urls "http://0.0.0.0:5000"`
+
+## License
+
+Developed by [Sims Tech](https://sims-service.com/). Free to use, copy, modify, and distribute. No warranty; use at your own risk. See the repository for full license text (MIT).

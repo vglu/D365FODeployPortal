@@ -591,4 +591,6 @@ Tests use Playwright for browser automation. They start a separate instance of t
 
 ## License
 
-Internal tool. Not for public distribution.
+This project is developed by **[Sims Tech](https://sims-service.com/)**.
+
+It is free and open source: you may **use, copy, modify, and distribute** it freely. The software is provided **without warranty of any kind**; all risks of use are solely with the user. See the [LICENSE](LICENSE) file (MIT License) for the full legal terms.
