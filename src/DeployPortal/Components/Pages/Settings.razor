@@ -13,21 +13,26 @@
         <MudText Typo="Typo.h6">Deployment safety</MudText>
     </MudStack>
     <MudSwitch @bind-Value="_simulateDeployment" Label="Simulate deployment" Color="Color.Warning" Class="mb-2" />
-    <MudText Typo="Typo.body2" Color="Color.Secondary">
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
         When on: auth and connection check (<code>pac auth who</code>) run as usual, but <strong>package deploy is skipped</strong>. Use this to avoid accidentally deploying to real environments. Connection verification confirms you are correctly connected to the target.
+    </MudText>
+    <MudSwitch @bind-Value="_verifyOrganizationFriendlyNameOnDeploy" Label="Additionally verify Friendly Name on deploy" Color="Color.Primary" Class="mb-2" />
+    <MudText Typo="Typo.body2" Color="Color.Secondary">
+        When on: pre-deploy validation will require that <code>pac auth who</code> output matches the <strong>Organization Friendly Name</strong> stored for the environment (if set). Use this when the same Service Principal has access to multiple environments to ensure deploy targets the correct one. When off, only URL/name in who output is checked.
     </MudText>
 </MudPaper>
 
-@* ===== DEPLOYMENT QUEUE ===== *@
+@* ===== PARALLELISM (DEPLOYMENT QUEUE) ===== *@
 <MudPaper Class="pa-4 mb-4" Elevation="2">
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
-        <MudIcon Icon="@Icons.Material.Filled.Queue" Color="Color.Primary" />
-        <MudText Typo="Typo.h6">Deployment queue</MudText>
+        <MudIcon Icon="@Icons.Material.Filled.Speed" Color="Color.Primary" />
+        <MudText Typo="Typo.h6">Deployment queue (parallelism)</MudText>
     </MudStack>
-    <MudNumericField @bind-Value="_maxConcurrentDeployments" Label="Max concurrent deployments"
-                     Variant="Variant.Outlined" Min="1" Max="20" Class="mb-3"
-                     HelperText="How many deployments (one package → one environment) can run at the same time. Stored in database. Change takes effect after app restart."
-                     Style="max-width: 120px;" />
+    <MudTextField @bind-Value="_maxConcurrentDeploymentsText" Label="Max concurrent deployments"
+                  Variant="Variant.Outlined" Class="mb-3" Style="max-width: 120px;"
+                  InputType="InputType.Number"
+                  HelperText="How many deployments (one package → one environment) can run at the same time (1–20). Stored in database. Change takes effect after app restart."
+                  Immediate="true" />
 </MudPaper>
 
 @* ===== TOOL STATUS ===== *@
@@ -444,7 +449,9 @@
     private string _databasePath = "";
     private string _lcsTemplatePath = "";
     private bool _simulateDeployment;
+    private bool _verifyOrganizationFriendlyNameOnDeploy;
     private int _maxConcurrentDeployments = 2;
+    private string _maxConcurrentDeploymentsText = "2";
     private bool _saving;
     private List<SettingsService.ToolStatus>? _toolStatus;
 
@@ -469,7 +476,9 @@
         _databasePath = settings.GetValueOrDefault("DatabasePath", "");
         _lcsTemplatePath = settings.GetValueOrDefault("LcsTemplatePath", "");
         _simulateDeployment = string.Equals(settings.GetValueOrDefault("SimulateDeployment", "false"), "true", StringComparison.OrdinalIgnoreCase);
+        _verifyOrganizationFriendlyNameOnDeploy = string.Equals(settings.GetValueOrDefault("VerifyOrganizationFriendlyNameOnDeploy", "false"), "true", StringComparison.OrdinalIgnoreCase);
         _maxConcurrentDeployments = int.TryParse(settings.GetValueOrDefault("MaxConcurrentDeployments", "2"), out var mc) && mc >= 1 && mc <= 20 ? mc : 2;
+        _maxConcurrentDeploymentsText = _maxConcurrentDeployments.ToString();
     }
 
     private void RefreshStatus()
@@ -496,7 +505,8 @@
                 ["DatabasePath"] = _databasePath.Trim(),
                 ["LcsTemplatePath"] = _lcsTemplatePath.Trim(),
                 ["SimulateDeployment"] = _simulateDeployment ? "true" : "false",
-                ["MaxConcurrentDeployments"] = Math.Clamp(_maxConcurrentDeployments, 1, 20).ToString()
+                ["VerifyOrganizationFriendlyNameOnDeploy"] = _verifyOrganizationFriendlyNameOnDeploy ? "true" : "false",
+                ["MaxConcurrentDeployments"] = (int.TryParse(_maxConcurrentDeploymentsText, out var mc) && mc >= 1 && mc <= 20 ? mc : _maxConcurrentDeployments).ToString()
             };
 
             SettingsSvc.SaveSettings(settings);

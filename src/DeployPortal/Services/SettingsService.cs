@@ -117,6 +117,9 @@ public class SettingsService : ISettingsService
     /// </summary>
     public bool SimulateDeployment => string.Equals(GetSetting("SimulateDeployment", "false"), "true", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>When true, pre-deploy validation requires Organization Friendly Name match when set on environment.</summary>
+    public bool VerifyOrganizationFriendlyNameOnDeploy => string.Equals(GetSetting("VerifyOrganizationFriendlyNameOnDeploy", "false"), "true", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Azure DevOps: organization (e.g. sisn or org name from dev.azure.com).</summary>
     public string AzureDevOpsOrganization => GetSetting("AzureDevOpsOrganization", "");
     /// <summary>Azure DevOps: project name or ID.</summary>
@@ -258,7 +261,7 @@ public class SettingsService : ISettingsService
     }
 
     // ========== Read/Write ==========
-    private static readonly string[] FileSettingKeys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath", "SimulateDeployment" };
+    private static readonly string[] FileSettingKeys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath", "SimulateDeployment", "VerifyOrganizationFriendlyNameOnDeploy" };
 
     public Dictionary<string, string> GetAllSettings()
     {

@@ -83,6 +83,13 @@
                     }
                 </MudTd>
                 <MudTd DataLabel="Actions">
+                    @if (context.Status == DeploymentStatus.Queued || context.Status == DeploymentStatus.Converting || context.Status == DeploymentStatus.Deploying || context.Status == DeploymentStatus.Merging)
+                    {
+                        <MudTooltip Text="Cancel deployment">
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Color="Color.Error"
+                                           OnClick="@(() => CancelDeployment(context))" />
+                        </MudTooltip>
+                    }
                     <MudTooltip Text="View Details">
                         <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" Color="Color.Default"
                                        OnClick="@(() => Nav.NavigateTo($"/deployments/{context.Id}"))" />
@@ -377,10 +384,43 @@
     {
         DeploymentStatus.Success => Color.Success,
         DeploymentStatus.Failed => Color.Error,
+        DeploymentStatus.Cancelled => Color.Warning,
         DeploymentStatus.Deploying or DeploymentStatus.Converting or DeploymentStatus.Merging => Color.Info,
         DeploymentStatus.Queued => Color.Default,
         _ => Color.Default
     };
+
+    private async Task CancelDeployment(Deployment deployment)
+    {
+        var result = await DialogService.ShowMessageBox(
+            "Cancel Deployment",
+            $"Cancel deployment #{deployment.Id}? It will not run (or will stop being retried after restart).",
+            yesText: "Cancel deployment",
+            cancelText: "Keep");
+        if (result != true) return;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var d = await db.Deployments.FindAsync(deployment.Id);
+            if (d == null) { Snackbar.Add("Deployment not found.", Severity.Warning); return; }
+            if (d.Status == DeploymentStatus.Success || d.Status == DeploymentStatus.Failed || d.Status == DeploymentStatus.Cancelled)
+            {
+                Snackbar.Add($"Deployment is already {d.Status}.", Severity.Info);
+                await LoadActiveData();
+                return;
+            }
+            d.Status = DeploymentStatus.Cancelled;
+            d.CompletedAt = DateTime.UtcNow;
+            d.ErrorMessage = "Cancelled by user.";
+            await db.SaveChangesAsync();
+            Snackbar.Add($"Deployment #{deployment.Id} cancelled.", Severity.Success);
+            await LoadActiveData();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to cancel: {ex.Message}", Severity.Error);
+        }
+    }
 
     private string GetDuration(Deployment d)
     {

@@ -42,6 +42,12 @@ public class ConvertEngine
             Path.GetDirectoryName(lcsPackagePath)!,
             Path.GetFileNameWithoutExtension(lcsPackagePath) + "_unified");
 
+        // Remove existing output so a retry or second deploy of the same package does not hit "file already exists"
+        if (Directory.Exists(outputDir))
+        {
+            try { Directory.Delete(outputDir, true); } catch { /* ignore */ }
+        }
+
         Directory.CreateDirectory(outputDir);
         var assetsDir = Path.Combine(outputDir, "PackageAssets");
         Directory.CreateDirectory(assetsDir);
@@ -602,6 +608,8 @@ public class ConvertEngine
         try
         {
             ZipFile.ExtractToDirectory(sourceZipPath, tempModuleDir);
+            if (File.Exists(outputZipPath))
+                File.Delete(outputZipPath);
             using var outputZip = ZipFile.Open(outputZipPath, ZipArchiveMode.Create);
 
             string? licenseFolderPath = null;

@@ -69,7 +69,8 @@ public class DeployService : IDeployService
                 IsolatedAuthDir = isolatedAuthDir,
                 LogFilePath = logFilePath,
                 PackagePath = packagePath,
-                PacAuthWhoOutput = whoOutput
+                PacAuthWhoOutput = whoOutput,
+                VerifyOrganizationFriendlyName = _settings.VerifyOrganizationFriendlyNameOnDeploy
             };
 
             await RunValidatorsAsync(context, isPreDeploy: true, onLog);

@@ -2,14 +2,25 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Nav
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
 @implements IAsyncDisposable
 
 <PageTitle>Deployment #@Id</PageTitle>
 
-<MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
-           OnClick="@(() => Nav.NavigateTo("/deployments"))" Class="mb-2">
-    Back to History
-</MudButton>
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2" Spacing="2">
+    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack"
+               OnClick="@(() => Nav.NavigateTo("/deployments"))">
+        Back to History
+    </MudButton>
+    @if (_deployment != null && (_deployment.Status == DeploymentStatus.Queued || _deployment.Status == DeploymentStatus.Converting || _deployment.Status == DeploymentStatus.Deploying || _deployment.Status == DeploymentStatus.Merging))
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Cancel"
+                   OnClick="@CancelDeployment">
+            Cancel deployment
+        </MudButton>
+    }
+</MudStack>
 
 @if (_deployment != null)
 {
@@ -140,10 +151,46 @@ else
     {
         DeploymentStatus.Success => Color.Success,
         DeploymentStatus.Failed => Color.Error,
+        DeploymentStatus.Cancelled => Color.Warning,
         DeploymentStatus.Deploying or DeploymentStatus.Converting or DeploymentStatus.Merging => Color.Info,
         DeploymentStatus.Queued => Color.Default,
         _ => Color.Default
     };
+
+    private async Task CancelDeployment()
+    {
+        if (_deployment == null) return;
+        var result = await DialogService.ShowMessageBox(
+            "Cancel Deployment",
+            $"Cancel deployment #{_deployment.Id}? It will not run (or will stop being retried after restart).",
+            yesText: "Cancel deployment",
+            cancelText: "Keep");
+        if (result != true) return;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var d = await db.Deployments.FindAsync(_deployment.Id);
+            if (d == null) { Snackbar.Add("Deployment not found.", Severity.Warning); return; }
+            if (d.Status == DeploymentStatus.Success || d.Status == DeploymentStatus.Failed || d.Status == DeploymentStatus.Cancelled)
+            {
+                Snackbar.Add($"Deployment is already {d.Status}.", Severity.Info);
+                await LoadData();
+                StateHasChanged();
+                return;
+            }
+            d.Status = DeploymentStatus.Cancelled;
+            d.CompletedAt = DateTime.UtcNow;
+            d.ErrorMessage = "Cancelled by user.";
+            await db.SaveChangesAsync();
+            Snackbar.Add($"Deployment #{_deployment.Id} cancelled.", Severity.Success);
+            await LoadData();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to cancel: {ex.Message}", Severity.Error);
+        }
+    }
 
     private string GetDuration(Deployment d)
     {

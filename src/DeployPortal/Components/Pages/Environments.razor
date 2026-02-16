@@ -51,6 +51,7 @@
     <HeaderContent>
         <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Name)" InitialDirection="SortDirection.Ascending">Name</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.Url)">URL</MudTableSortLabel></MudTh>
+        <MudTh>Org Friendly Name</MudTh>
         <MudTh Style="width:90px">Auth</MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Models.Environment, object>(e => e.TenantId)">Tenant ID</MudTableSortLabel></MudTh>
         <MudTh>App ID</MudTh>
@@ -62,6 +63,12 @@
         <MudTd DataLabel="Name">@context.Name</MudTd>
         <MudTd DataLabel="URL">
             <span class="mud-text-secondary" style="font-size:0.85rem">@context.Url</span>
+        </MudTd>
+        <MudTd DataLabel="Org Friendly Name">
+            @if (!string.IsNullOrWhiteSpace(context.OrganizationFriendlyName))
+            { <span class="mud-text-secondary" style="font-size:0.85rem">@context.OrganizationFriendlyName</span> }
+            else
+            { <span class="mud-text-disabled">—</span> }
         </MudTd>
         <MudTd DataLabel="Auth">
             @if (context.HasServicePrincipal)
@@ -111,6 +118,25 @@
             <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
                 At deploy time you will see a link in the log. Open it in your browser and enter the code to sign in. Works locally and in Docker.
             </MudAlert>
+        }
+        <MudStack Row="true" AlignItems="AlignItems.End" Class="mb-3">
+            <MudTextField @bind-Value="_formOrganizationFriendlyName" Label="Organization Friendly Name (optional)"
+                          HelperText="From 'pac auth who'. Used to verify correct environment before deploy when enabled in Settings."
+                          Style="flex: 1;" />
+            @if (_editingId.HasValue)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Class="ms-2"
+                           OnClick="@PullFriendlyName" Disabled="@_pullFriendlyNameLoading"
+                           StartIcon="@Icons.Material.Filled.Refresh">
+                    @(_pullFriendlyNameLoading ? "Pulling..." : "Pull Friendly Name")
+                </MudButton>
+            }
+        </MudStack>
+        @if (_editingId.HasValue)
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
+                Pull Friendly Name: fetches from current environment via pac auth who (Service Principal required).
+            </MudText>
         }
     </DialogContent>
     <DialogActions>
@@ -222,24 +248,33 @@
             @if (_parsedData.HasEnvironments)
             {
                 <MudText Typo="Typo.subtitle2" Class="mb-2">
-                    Environments (@_parsedData.Environments.Count found) — select which to create:
+                    Environments (@_parsedData.Environments.Count found) — select which to create or update:
                 </MudText>
 
                 <MudPaper Class="pa-2 mb-3" Elevation="0" Style="background:var(--mud-palette-background-gray); max-height:250px; overflow-y:auto;">
                     @foreach (var env in _parsedData.Environments)
                     {
-                        var existing = _environments.Any(e =>
-                            e.Url.Equals(env, StringComparison.OrdinalIgnoreCase));
+                        var existingEnv = _environments.FirstOrDefault(e => e.Url.Equals(env, StringComparison.OrdinalIgnoreCase));
+                        var existing = existingEnv != null;
                         <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
-                            <MudCheckBox T="bool" Value="@_selectedImportEnvs.Contains(env)"
-                                         ValueChanged="@(v => ToggleImportEnv(env, v))"
-                                         Disabled="@existing" Dense="true" Color="Color.Primary" />
-                            <MudText Typo="Typo.body2" Style="@(existing ? "text-decoration:line-through; opacity:0.5" : "")">
-                                @env
-                            </MudText>
                             @if (existing)
                             {
+                                <MudCheckBox T="bool" Value="@_selectedUpdateEnvs.Contains(env)"
+                                             ValueChanged="@(v => ToggleImportEnvUpdate(env, v))"
+                                             Dense="true" Color="Color.Secondary" />
+                                <MudText Typo="Typo.body2">@env</MudText>
                                 <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">exists</MudChip>
+                                @if (_selectedUpdateEnvs.Contains(env))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Text">update credentials</MudChip>
+                                }
+                            }
+                            else
+                            {
+                                <MudCheckBox T="bool" Value="@_selectedImportEnvs.Contains(env)"
+                                             ValueChanged="@(v => ToggleImportEnv(env, v))"
+                                             Dense="true" Color="Color.Primary" />
+                                <MudText Typo="Typo.body2">@env</MudText>
                             }
                         </MudStack>
                     }
@@ -247,6 +282,7 @@
 
                 <MudStack Row="true" Spacing="2" Class="mb-2">
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@SelectAllImportEnvs">Select all new</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@SelectAllImportEnvsUpdate">Select all existing (update)</MudButton>
                     <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="@DeselectAllImportEnvs">Deselect all</MudButton>
                 </MudStack>
             }
@@ -267,6 +303,13 @@
                               HelperText="Secret was not found in the pasted text. Enter it manually."
                               Class="mb-3" />
             }
+
+            @if (_importCreating)
+            {
+                <MudProgressLinear Color="Color.Primary" Class="mt-3 mb-2" Indeterminate="@(_importProgressTotal == 0)"
+                                   Value="@(_importProgressTotal > 0 ? 100.0 * _importProgressCurrent / _importProgressTotal : 0)" />
+                <MudText Typo="Typo.body2" Class="mb-2">@_importProgressMessage</MudText>
+            }
         }
     </DialogContent>
     <DialogActions>
@@ -277,24 +320,33 @@
         <MudButton OnClick="@CloseImportDialog">Cancel</MudButton>
         @if (_importParsed && _parsedData != null && _parsedData.HasCredentials)
         {
+            var hasCreate = _selectedImportEnvs.Count > 0 || !string.IsNullOrWhiteSpace(_importManualUrl);
+            var hasUpdate = _selectedUpdateEnvs.Count > 0;
+            var canApply = hasCreate || hasUpdate;
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@CreateFromImport"
-                       Disabled="@_importCreating"
+                       Disabled="@(_importCreating || !canApply)"
                        StartIcon="@Icons.Material.Filled.Add">
                 @if (_importCreating)
                 {
-                    @("Creating...")
+                    @("Applying...")
                 }
-                else if (_selectedImportEnvs.Count > 0)
+                else if (hasCreate && hasUpdate)
                 {
-                    @($"Create {_selectedImportEnvs.Count} environment(s)")
+                    var createCount = _selectedImportEnvs.Count + (string.IsNullOrWhiteSpace(_importManualUrl) ? 0 : 1);
+                    @($"Create {createCount}, Update {_selectedUpdateEnvs.Count}")
                 }
-                else if (!string.IsNullOrWhiteSpace(_importManualUrl))
+                else if (hasCreate)
                 {
-                    @("Create 1 environment")
+                    var createCount = _selectedImportEnvs.Count + (string.IsNullOrWhiteSpace(_importManualUrl) ? 0 : 1);
+                    @(createCount == 1 ? "Create 1 environment" : $"Create {createCount} environment(s)")
+                }
+                else if (hasUpdate)
+                {
+                    @(_selectedUpdateEnvs.Count == 1 ? "Update 1 environment" : $"Update {_selectedUpdateEnvs.Count} environment(s)")
                 }
                 else
                 {
-                    @("Create")
+                    @("Create / Update")
                 }
             </MudButton>
         }
@@ -402,15 +454,18 @@
                     @* Step 4 *@
                     <MudTimelineItem Color="Color.Primary" Size="Size.Small">
                         <ItemContent>
-                            <MudText Typo="Typo.subtitle2" Color="Color.Primary">Part 4: Register Application User in Power Platform</MudText>
-                            <MudText Typo="Typo.body2">
-                                For <strong>each target environment</strong>:
-                            </MudText>
+                            <MudText Typo="Typo.subtitle2" Color="Color.Primary">Part 4: Add Application User in each target environment (required)</MudText>
+                            <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Text" Class="mt-1 mb-2">
+                                After creating the Service Principal (Parts 1–3), you must add it as an <strong>Application User</strong> in <strong>each</strong> target environment. Otherwise <code>pac auth create</code> will report &quot;The user is not a member of the organization&quot; / Forbidden.
+                            </MudAlert>
+                            <MudText Typo="Typo.body2">For <strong>each target environment</strong> where you will deploy:</MudText>
                             <MudList T="string" Dense="true" Class="ml-n2">
-                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><a href="https://admin.powerplatform.microsoft.com" target="_blank">Power Platform Admin Center</a> &rarr; select environment</MudListItem>
-                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><strong>Settings</strong> &rarr; <strong>Application users</strong> &rarr; <strong>+ New app user</strong></MudListItem>
-                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">Find <code>PAC-Deploy-Automation</code>, assign <strong>System Administrator</strong> role</MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><a href="https://admin.powerplatform.microsoft.com" target="_blank" rel="noopener">Power Platform Admin Center</a> &rarr; <strong>Environments</strong> &rarr; select the environment</MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><strong>Settings</strong> &rarr; <strong>Users + permissions</strong> &rarr; <strong>Application users</strong></MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><strong>+ New app user</strong> &rarr; <strong>+ Add an app</strong> &rarr; select your app (e.g. <code>PAC-Deploy-Automation</code> by Application ID)</MudListItem>
+                                <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">Choose <strong>Business unit</strong>, assign role <strong>System Administrator</strong> (or equivalent for deploy), then <strong>Save</strong></MudListItem>
                             </MudList>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Repeat for every environment that will use this Service Principal. One SP can be added to multiple environments.</MudText>
                         </ItemContent>
                     </MudTimelineItem>
 
@@ -426,8 +481,8 @@
                 </MudTimeline>
 
                 <MudDivider Class="my-3" />
-                <MudText Typo="Typo.subtitle2" Class="mb-2">Verification command:</MudText>
-                <MudPaper Class="pa-3" Elevation="0" Style="background:var(--mud-palette-background-gray); font-family:monospace; font-size:0.85rem; white-space:pre-wrap; overflow-x:auto">pac auth create --applicationId "&lt;APP_ID&gt;" --clientSecret "&lt;SECRET&gt;" --tenant "&lt;TENANT_ID&gt;" --environment "&lt;ENV_URL&gt;"
+                <MudText Typo="Typo.subtitle2" Class="mb-2">Verification command (use <code>--name</code> for an isolated profile; required if running parallel deploys):</MudText>
+                <MudPaper Class="pa-3" Elevation="0" Style="background:var(--mud-palette-background-gray); font-family:monospace; font-size:0.85rem; white-space:pre-wrap; overflow-x:auto">pac auth create --name "Deploy_MyEnv" --applicationId "&lt;APP_ID&gt;" --clientSecret "&lt;SECRET&gt;" --tenant "&lt;TENANT_ID&gt;" --environment "&lt;ENV_URL&gt;" --accept-cleartext-caching
 pac auth who</MudPaper>
             </MudTabPanel>
 
@@ -487,6 +542,8 @@ pac auth who</MudPaper>
     private string _formTenantId = "";
     private string _formApplicationId = "";
     private string _formClientSecret = "";
+    private string _formOrganizationFriendlyName = "";
+    private bool _pullFriendlyNameLoading;
 
     // SP Setup Guide
     private bool _spGuideDialogVisible;
@@ -497,9 +554,13 @@ pac auth who</MudPaper>
     private bool _importParsed;
     private CredentialParser.ParsedCredentials? _parsedData;
     private HashSet<string> _selectedImportEnvs = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedUpdateEnvs = new(StringComparer.OrdinalIgnoreCase);
     private string _importManualSecret = "";
     private string _importManualUrl = "";
     private bool _importCreating;
+    private string _importProgressMessage = "";
+    private int _importProgressCurrent;
+    private int _importProgressTotal;
 
     // Import backup (JSON)
     private bool _importBackupDialogVisible;
@@ -522,6 +583,7 @@ pac auth who</MudPaper>
         if (string.IsNullOrWhiteSpace(_searchText)) return true;
         return e.Name.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
             || e.Url.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
+            || (e.OrganizationFriendlyName != null && e.OrganizationFriendlyName.Contains(_searchText, StringComparison.OrdinalIgnoreCase))
             || e.TenantId.Contains(_searchText, StringComparison.OrdinalIgnoreCase)
             || e.ApplicationId.Contains(_searchText, StringComparison.OrdinalIgnoreCase);
     }
@@ -531,7 +593,7 @@ pac auth who</MudPaper>
     {
         _editingId = null;
         _formUseInteractive = false;
-        _formName = _formUrl = _formTenantId = _formApplicationId = _formClientSecret = "";
+        _formName = _formUrl = _formTenantId = _formApplicationId = _formClientSecret = _formOrganizationFriendlyName = "";
         _dialogVisible = true;
     }
 
@@ -544,6 +606,7 @@ pac auth who</MudPaper>
         _formTenantId = env.TenantId;
         _formApplicationId = env.ApplicationId;
         _formClientSecret = "";
+        _formOrganizationFriendlyName = env.OrganizationFriendlyName ?? "";
         _dialogVisible = true;
     }
 
@@ -576,7 +639,7 @@ pac auth who</MudPaper>
             if (_editingId.HasValue)
             {
                 await EnvService.UpdateAsync(_editingId.Value, _formName, _formUrl, tenantId, applicationId,
-                    string.IsNullOrEmpty(clientSecret) ? null : clientSecret);
+                    string.IsNullOrEmpty(clientSecret) ? null : clientSecret, _formOrganizationFriendlyName);
                 Snackbar.Add("Environment updated.", Severity.Success);
             }
             else
@@ -588,6 +651,29 @@ pac auth who</MudPaper>
             await LoadData();
         }
         catch (Exception ex) { Snackbar.Add($"Error: {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error); }
+    }
+
+    private async Task PullFriendlyName()
+    {
+        if (!_editingId.HasValue) return;
+        _pullFriendlyNameLoading = true;
+        StateHasChanged();
+        try
+        {
+            await EnvService.RefreshOrganizationFriendlyNameAsync(_editingId.Value);
+            var env = await EnvService.GetByIdAsync(_editingId.Value);
+            _formOrganizationFriendlyName = env?.OrganizationFriendlyName ?? "";
+            Snackbar.Add("Friendly Name updated from current environment.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Pull Friendly Name failed: {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error);
+        }
+        finally
+        {
+            _pullFriendlyNameLoading = false;
+            StateHasChanged();
+        }
     }
 
     // ===== Export / Import backup =====
@@ -645,6 +731,7 @@ pac auth who</MudPaper>
         _importParsed = false;
         _parsedData = null;
         _selectedImportEnvs.Clear();
+        _selectedUpdateEnvs.Clear();
         _importManualSecret = "";
         _importManualUrl = "";
         _importCreating = false;
@@ -676,8 +763,9 @@ pac auth who</MudPaper>
         _parsedData = CredentialParser.Parse(_importText);
         _importParsed = true;
 
-        // Pre-select environments that don't already exist
+        // Pre-select environments that don't already exist (do not pre-select existing for update)
         _selectedImportEnvs.Clear();
+        _selectedUpdateEnvs.Clear();
         if (_parsedData.HasEnvironments)
         {
             foreach (var env in _parsedData.Environments)
@@ -704,7 +792,27 @@ pac auth who</MudPaper>
         }
     }
 
-    private void DeselectAllImportEnvs() => _selectedImportEnvs.Clear();
+    private void ToggleImportEnvUpdate(string url, bool selected)
+    {
+        if (selected) _selectedUpdateEnvs.Add(url);
+        else _selectedUpdateEnvs.Remove(url);
+    }
+
+    private void SelectAllImportEnvsUpdate()
+    {
+        if (_parsedData == null) return;
+        foreach (var env in _parsedData.Environments)
+        {
+            if (_environments.Any(e => e.Url.Equals(env, StringComparison.OrdinalIgnoreCase)))
+                _selectedUpdateEnvs.Add(env);
+        }
+    }
+
+    private void DeselectAllImportEnvs()
+    {
+        _selectedImportEnvs.Clear();
+        _selectedUpdateEnvs.Clear();
+    }
 
     private async Task CreateFromImport()
     {
@@ -717,32 +825,39 @@ pac auth who</MudPaper>
             return;
         }
 
-        // Collect URLs to create
-        var urls = _selectedImportEnvs.ToList();
-        if (urls.Count == 0 && !string.IsNullOrWhiteSpace(_importManualUrl))
-        {
-            urls.Add(_importManualUrl.Trim());
-        }
+        var urlsToCreate = _selectedImportEnvs.ToList();
+        if (urlsToCreate.Count == 0 && !string.IsNullOrWhiteSpace(_importManualUrl))
+            urlsToCreate.Add(_importManualUrl.Trim());
 
-        if (urls.Count == 0)
+        var urlsToUpdate = _selectedUpdateEnvs.ToList();
+
+        if (urlsToCreate.Count == 0 && urlsToUpdate.Count == 0)
         {
-            Snackbar.Add("Select at least one environment to create.", Severity.Warning);
+            Snackbar.Add("Select at least one environment to create or update.", Severity.Warning);
             return;
         }
 
         _importCreating = true;
+        _importProgressTotal = urlsToCreate.Count + urlsToUpdate.Count;
+        _importProgressCurrent = 0;
+        _importProgressMessage = _importProgressTotal > 0 ? "Starting..." : "";
         StateHasChanged();
 
         var created = 0;
+        var updated = 0;
         var errors = 0;
 
         try
         {
-            foreach (var url in urls)
+            var idx = 0;
+            foreach (var url in urlsToCreate)
             {
                 try
                 {
-                    // Generate a human-readable name from the URL
+                    _importProgressMessage = $"Creating environment ({idx + 1}/{_importProgressTotal})...";
+                    _importProgressCurrent = idx;
+                    StateHasChanged();
+
                     var name = GenerateEnvName(url);
                     await EnvService.CreateAsync(name, url, _parsedData.TenantId!, _parsedData.ApplicationId!, secret);
                     created++;
@@ -752,11 +867,39 @@ pac auth who</MudPaper>
                     Snackbar.Add($"Failed to create '{url}': {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error);
                     errors++;
                 }
+                idx++;
             }
 
-            if (created > 0)
+            var updateStartIdx = urlsToCreate.Count;
+            idx = 0;
+            foreach (var url in urlsToUpdate)
             {
-                Snackbar.Add($"{created} environment(s) created successfully!", Severity.Success);
+                var env = _environments.FirstOrDefault(e => e.Url.Equals(url, StringComparison.OrdinalIgnoreCase));
+                if (env == null) continue;
+                try
+                {
+                    var envNum = updateStartIdx + idx + 1;
+                    _importProgressMessage = $"Updating environment ({envNum}/{_importProgressTotal})...";
+                    _importProgressCurrent = updateStartIdx + idx;
+                    StateHasChanged();
+
+                    await EnvService.UpdateAsync(env.Id, env.Name, url, _parsedData.TenantId!, _parsedData.ApplicationId!, secret);
+                    updated++;
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Failed to update '{url}': {ExceptionHelper.GetDisplayMessage(ex)}", Severity.Error);
+                    errors++;
+                }
+                idx++;
+            }
+
+            if (created > 0 || updated > 0)
+            {
+                var msg = new List<string>();
+                if (created > 0) msg.Add($"{created} created");
+                if (updated > 0) msg.Add($"{updated} updated");
+                Snackbar.Add(string.Join(", ", msg) + " successfully!", Severity.Success);
                 _importDialogVisible = false;
                 await LoadData();
             }
@@ -764,6 +907,9 @@ pac auth who</MudPaper>
         finally
         {
             _importCreating = false;
+            _importProgressMessage = "";
+            _importProgressCurrent = 0;
+            _importProgressTotal = 0;
         }
     }
 
@@ -781,9 +927,20 @@ pac auth who</MudPaper>
             yesText: "Delete", cancelText: "Cancel");
         if (result == true)
         {
-            await EnvService.DeleteAsync(env.Id);
-            Snackbar.Add("Environment deleted.", Severity.Info);
-            await LoadData();
+            try
+            {
+                await EnvService.DeleteAsync(env.Id);
+                Snackbar.Add("Environment deleted.", Severity.Info);
+                await LoadData();
+            }
+            catch (InvalidOperationException ex)
+            {
+                Snackbar.Add(ex.Message, Severity.Warning);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add(ExceptionHelper.GetDisplayMessage(ex), Severity.Error);
+            }
         }
     }
 

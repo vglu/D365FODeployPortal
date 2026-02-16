@@ -99,6 +99,25 @@ public class DeploymentServicesUnitTests
     #region PreDeployAuthValidator Tests
 
     [Test]
+    public async Task PreDeployAuthValidator_ValidateAsync_Passes_WhenVerifyFriendlyNameIsOff()
+    {
+        // When setting is off, validator skips and never throws
+        var logger = new Mock<ILogger<PreDeployAuthValidator>>();
+        var validator = new PreDeployAuthValidator(logger.Object);
+        var context = new DeploymentContext
+        {
+            Environment = new Models.Environment { Name = "Test", Url = "test-env.crm.dynamics.com" },
+            IsolatedAuthDir = _testDir,
+            LogFilePath = Path.Combine(_testDir, "deploy.log"),
+            PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            VerifyOrganizationFriendlyName = false,
+            PacAuthWhoOutput = "Organization Friendly Name: WRONG-ENV"
+        };
+        Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
+        await Task.CompletedTask;
+    }
+
+    [Test]
     public async Task PreDeployAuthValidator_ValidateAsync_Passes_WhenEnvironmentUrlIsInWhoOutput()
     {
         // Arrange
@@ -114,6 +133,7 @@ public class DeploymentServicesUnitTests
             IsolatedAuthDir = _testDir,
             LogFilePath = Path.Combine(_testDir, "deploy.log"),
             PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            VerifyOrganizationFriendlyName = true,
             PacAuthWhoOutput = "Environment Url: https://test-env.crm.dynamics.com/"
         };
 
@@ -133,11 +153,13 @@ public class DeploymentServicesUnitTests
             Environment = new Models.Environment 
             { 
                 Name = "Example-Target-Env", 
-                Url = "target-env.crm.dynamics.com" 
+                Url = "target-env.crm.dynamics.com",
+                OrganizationFriendlyName = "Example-Target-Env"
             },
             IsolatedAuthDir = _testDir,
             LogFilePath = Path.Combine(_testDir, "deploy.log"),
             PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            VerifyOrganizationFriendlyName = true,
             // Real output from pac auth who (interactive auth) — no URL, but has Organization Friendly Name
             PacAuthWhoOutput = @"Connected as user@example.com
 Type: User
@@ -166,6 +188,7 @@ Organization Friendly Name: Example-Target-Env"
             IsolatedAuthDir = _testDir,
             LogFilePath = Path.Combine(_testDir, "deploy.log"),
             PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            VerifyOrganizationFriendlyName = true,
             PacAuthWhoOutput = "Organization Friendly Name: WRONG-ENV\nEnvironment Url: https://WRONG-env.crm.dynamics.com/"
         };
 
@@ -192,6 +215,7 @@ Organization Friendly Name: Example-Target-Env"
             IsolatedAuthDir = _testDir,
             LogFilePath = Path.Combine(_testDir, "deploy.log"),
             PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            VerifyOrganizationFriendlyName = true,
             PacAuthWhoOutput = null // Missing!
         };
 

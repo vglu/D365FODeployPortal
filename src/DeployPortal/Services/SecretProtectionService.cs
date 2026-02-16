@@ -24,7 +24,16 @@ public class SecretProtectionService : ISecretProtectionService
         if (string.IsNullOrEmpty(cipherText))
             return string.Empty;
 
-        return _protector.Unprotect(cipherText);
+        try
+        {
+            return _protector.Unprotect(cipherText);
+        }
+        catch (System.Security.Cryptography.CryptographicException ex) when (ex.Message?.Contains("was not found in the key ring") == true)
+        {
+            throw new InvalidOperationException(
+                "The encryption key used to store this environment's Client Secret is no longer in the key ring (keys were rotated or the app was restarted with a different key store). " +
+                "Please open Environments, edit the environment, and re-enter the Client Secret, then save.", ex);
+        }
     }
 
     public string MaskSecret(string secret) => MaskSecretCore(secret);

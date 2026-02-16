@@ -248,6 +248,7 @@ try
                 Log.Information("Added {Column} column to {Table} table", col, tbl);
             }
         }
+        EnsureColumn("Environments", "OrganizationFriendlyName", "TEXT NULL");
         EnsureColumn("Packages", "MergeSourceNames", "TEXT NULL");
         EnsureColumn("Packages", "DevOpsTaskUrl", "TEXT NULL");
         EnsureColumn("Deployments", "DevOpsTaskUrl", "TEXT NULL");
@@ -652,6 +653,25 @@ try
     .WithName("GetDeployment")
     .WithOpenApi()
     .Produces<DeploymentDto>(200).Produces(404);
+
+    // Cancel a queued (or in-progress) deployment. Prevents it from being re-queued on app restart.
+    api.MapPost("/deployments/{id:int}/cancel", async (int id, IDbContextFactory<AppDbContext> dbFactory) =>
+    {
+        await using var db = await dbFactory.CreateDbContextAsync();
+        var d = await db.Deployments.FindAsync(id);
+        if (d == null)
+            return Results.NotFound("Deployment not found.");
+        if (d.Status == DeployPortal.Models.DeploymentStatus.Success || d.Status == DeployPortal.Models.DeploymentStatus.Failed || d.Status == DeployPortal.Models.DeploymentStatus.Cancelled)
+            return Results.BadRequest($"Deployment is already {d.Status}. Only Queued, Converting, or Deploying can be cancelled.");
+        d.Status = DeployPortal.Models.DeploymentStatus.Cancelled;
+        d.CompletedAt = DateTime.UtcNow;
+        d.ErrorMessage = "Cancelled by user.";
+        await db.SaveChangesAsync();
+        return Results.Ok(new { deploymentId = id, status = "Cancelled" });
+    })
+    .WithName("CancelDeployment")
+    .WithOpenApi()
+    .Produces(200).Produces(400).Produces(404);
 
     // ── Package download API ──
     app.MapGet("/api/packages/{id:int}/download", async (int id, IDbContextFactory<AppDbContext> dbFactory) =>

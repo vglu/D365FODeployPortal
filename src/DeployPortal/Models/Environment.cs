@@ -23,6 +23,10 @@ public class Environment
     /// <summary>Optional. When empty with ApplicationId, environment uses interactive sign-in at deploy.</summary>
     public string ClientSecretEncrypted { get; set; } = string.Empty;
 
+    /// <summary>Organization Friendly Name from 'pac auth who'. Used to verify correct environment before deploy.</summary>
+    [MaxLength(300)]
+    public string? OrganizationFriendlyName { get; set; }
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

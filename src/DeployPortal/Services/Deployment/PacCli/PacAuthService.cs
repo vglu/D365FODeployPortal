@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace DeployPortal.Services.Deployment.PacCli;
 
 /// <summary>
@@ -81,12 +83,18 @@ public class PacAuthService : IPacAuthService
         onLog?.Invoke($"Authenticating to {environment.Url} (Service Principal)...");
 
         var clientSecret = _secretService.Decrypt(environment.ClientSecretEncrypted);
-        var arguments = 
+        // Normalize URL: no trailing slash to avoid "//.default" in token scope (PAC appends /.default)
+        var environmentUrl = (environment.Url ?? "").TrimEnd('/');
+        // --name: isolated profile per environment so parallel deployments do not conflict (each run uses PAC_AUTH_PROFILE_DIRECTORY + named profile)
+        var profileName = GetSafeProfileName(environment.Name);
+        var arguments =
             $"auth create " +
+            $"--name \"{profileName}\" " +
             $"--applicationId {environment.ApplicationId} " +
             $"--clientSecret \"{clientSecret}\" " +
             $"--tenant {environment.TenantId} " +
-            $"--environment {environment.Url}";
+            $"--environment {environmentUrl} " +
+            $"--accept-cleartext-caching";
 
         var workingDir = GetWorkingDirectory();
         var result = await _pacExecutor.ExecuteAsync(
@@ -103,6 +111,17 @@ public class PacAuthService : IPacAuthService
                 $"Error: {result.StandardError}");
         }
 
+        // PAC can exit 0 but still report connection failure in output (e.g. "The user is not a member of the organization")
+        var combinedOutput = (result.StandardOutput + "\n" + result.StandardError);
+        if (combinedOutput.Contains("Could not connect to the Dataverse organization", StringComparison.OrdinalIgnoreCase) ||
+            combinedOutput.Contains("The user is not a member of the organization", StringComparison.OrdinalIgnoreCase) ||
+            combinedOutput.Contains("invalid status code 'Forbidden'", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "PAC authentication reported connection failure. The Service Principal may not have access to this environment. " +
+                "Check that the app is a member of the target organization. PAC output: " + combinedOutput.Trim());
+        }
+
         _logger.LogInformation("Service Principal authentication successful");
     }
 
@@ -115,7 +134,9 @@ public class PacAuthService : IPacAuthService
         
         onLog?.Invoke($"Authenticating to {environment.Url} (interactive — open the link from the log and enter the code)...");
 
-        var arguments = $"auth create --environment \"{environment.Url}\" --deviceCode";
+        var environmentUrl = (environment.Url ?? "").TrimEnd('/');
+        var profileName = GetSafeProfileName(environment.Name);
+        var arguments = $"auth create --name \"{profileName}\" --environment \"{environmentUrl}\" --deviceCode --accept-cleartext-caching";
         var workingDir = GetWorkingDirectory();
         
         var result = await _pacExecutor.ExecuteAsync(
@@ -132,6 +153,15 @@ public class PacAuthService : IPacAuthService
                 $"Error: {result.StandardError}");
         }
 
+        var combinedOutputInteractive = (result.StandardOutput + "\n" + result.StandardError);
+        if (combinedOutputInteractive.Contains("Could not connect to the Dataverse organization", StringComparison.OrdinalIgnoreCase) ||
+            combinedOutputInteractive.Contains("The user is not a member of the organization", StringComparison.OrdinalIgnoreCase) ||
+            combinedOutputInteractive.Contains("invalid status code 'Forbidden'", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "PAC authentication reported connection failure. You may not have access to this environment. PAC output: " + combinedOutputInteractive.Trim());
+        }
+
         _logger.LogInformation("Interactive authentication successful");
     }
 
@@ -141,5 +171,14 @@ public class PacAuthService : IPacAuthService
         return !string.IsNullOrEmpty(path) 
             ? Path.GetDirectoryName(path)! 
             : AppContext.BaseDirectory;
+    }
+
+    /// <summary>Safe profile name for pac auth create --name (alphanumeric, dash, underscore; max 50 chars).</summary>
+    private static string GetSafeProfileName(string? environmentName)
+    {
+        var raw = environmentName ?? "Env";
+        var sanitized = Regex.Replace(raw, @"[^a-zA-Z0-9\-_]", "_");
+        if (sanitized.Length > 50) sanitized = sanitized[..50];
+        return "Deploy_" + (string.IsNullOrEmpty(sanitized) ? "Env" : sanitized);
     }
 }

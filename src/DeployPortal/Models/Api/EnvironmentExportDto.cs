@@ -8,5 +8,6 @@ public class EnvironmentExportDto
     public string TenantId { get; set; } = string.Empty;
     public string ApplicationId { get; set; } = string.Empty;
     public string ClientSecretEncrypted { get; set; } = string.Empty;
+    public string? OrganizationFriendlyName { get; set; }
     public bool IsActive { get; set; } = true;
 }

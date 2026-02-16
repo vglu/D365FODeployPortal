@@ -16,4 +16,10 @@ public class DeploymentContext
     /// Used by PreDeployAuthValidator.
     /// </summary>
     public string? PacAuthWhoOutput { get; set; }
+
+    /// <summary>
+    /// When true, PreDeployAuthValidator requires Organization Friendly Name match (if set on environment).
+    /// From Settings: VerifyOrganizationFriendlyNameOnDeploy.
+    /// </summary>
+    public bool VerifyOrganizationFriendlyName { get; set; }
 }

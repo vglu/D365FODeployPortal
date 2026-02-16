@@ -43,6 +43,46 @@ public class DeploymentOrchestrator : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Recover after app restart: mark Converting/Deploying as Failed (interrupted), re-queue Queued
+        try
+        {
+            using var scope = _services.CreateScope();
+            var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+            await using var db = await dbFactory.CreateDbContextAsync(stoppingToken);
+
+            var stuck = await db.Deployments
+                .Where(d => d.Status == DeploymentStatus.Merging || d.Status == DeploymentStatus.Converting || d.Status == DeploymentStatus.Deploying)
+                .ToListAsync(stoppingToken);
+            foreach (var d in stuck)
+            {
+                d.Status = DeploymentStatus.Failed;
+                d.ErrorMessage = "Deployment was interrupted (application stopped or restarted).";
+                d.CompletedAt = DateTime.UtcNow;
+            }
+            if (stuck.Count > 0)
+            {
+                await db.SaveChangesAsync(stoppingToken);
+                _logger.LogInformation("Marked {Count} interrupted deployment(s) as Failed.", stuck.Count);
+            }
+
+            var queuedIds = await db.Deployments
+                .Where(d => d.Status == DeploymentStatus.Queued)
+                .Select(d => d.Id)
+                .ToListAsync(stoppingToken);
+            foreach (var id in queuedIds)
+                await EnqueueAsync(id);
+            if (queuedIds.Count > 0)
+                _logger.LogInformation("Re-queued {Count} deployment(s) that were Queued before restart.", queuedIds.Count);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Startup recovery of deployment state failed.");
+        }
+
         var concurrency = Math.Max(SettingsService.MinMaxConcurrentDeployments, Math.Min(SettingsService.MaxMaxConcurrentDeployments, _settings.MaxConcurrentDeployments));
         _logger.LogInformation("DeploymentOrchestrator started with {Concurrency} concurrent deployment(s).", concurrency);
 
@@ -65,7 +105,14 @@ public class DeploymentOrchestrator : BackgroundService
         }
 
         var workers = Enumerable.Range(0, concurrency).Select(_ => RunWorkerAsync()).ToArray();
-        await Task.WhenAll(workers);
+        try
+        {
+            await Task.WhenAll(workers);
+        }
+        catch (OperationCanceledException)
+        {
+            // Graceful shutdown: host is stopping, token was canceled. Exit without logging as failure.
+        }
     }
 
     /// <summary>Waits so that at least <see cref="DelayBetweenStarts"/> has passed since the previous deployment start.</summary>
@@ -111,6 +158,12 @@ public class DeploymentOrchestrator : BackgroundService
             return;
         }
 
+        if (deployment.Status == DeploymentStatus.Cancelled)
+        {
+            _logger.LogInformation("Deployment {Id} was cancelled, skipping.", deploymentId);
+            return;
+        }
+
         var tempDir = settingsService.TempWorkingDir;
         var logDir = Path.Combine(tempDir, "logs");
         Directory.CreateDirectory(logDir);
@@ -136,9 +189,9 @@ public class DeploymentOrchestrator : BackgroundService
                 .SendAsync("ReceiveLog", logEntry.Timestamp.ToString("HH:mm:ss"), level, message, cancellationToken: ct);
         }
 
+        string? deployDir = null;
         try
         {
-            string deployDir;
             var packageType = deployment.Package.PackageType;
 
             if (packageType == "Unified")
@@ -157,7 +210,8 @@ public class DeploymentOrchestrator : BackgroundService
             }
             else
             {
-                // LCS or Merged — needs conversion
+                // LCS or Merged — needs conversion. Copy package to a unique temp path first so that
+                // parallel deployments of the same package get separate output dirs (no file overwrite).
                 deployment.Status = DeploymentStatus.Converting;
                 await db.SaveChangesAsync(ct);
 
@@ -166,9 +220,16 @@ public class DeploymentOrchestrator : BackgroundService
 
                 Log($"Starting conversion {packageType} -> Unified (engine: {(useBuiltIn ? "Built-in" : "ModelUtil")})");
 
-                deployDir = await convertService.ConvertToUnifiedAsync(
-                    deployment.Package.StoredFilePath,
-                    msg => Log(msg));
+                var uniqueCopyPath = Path.Combine(tempDir, $"deploy_{deploymentId}_{Guid.NewGuid():N}.zip");
+                try
+                {
+                    File.Copy(deployment.Package.StoredFilePath, uniqueCopyPath, overwrite: false);
+                    deployDir = await convertService.ConvertToUnifiedAsync(uniqueCopyPath, msg => Log(msg));
+                }
+                finally
+                {
+                    try { if (File.Exists(uniqueCopyPath)) File.Delete(uniqueCopyPath); } catch { /* ignore */ }
+                }
             }
 
             // Step 2: Deploy
@@ -192,9 +253,6 @@ public class DeploymentOrchestrator : BackgroundService
             deployment.CompletedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
             Log("Deployment completed successfully!");
-
-            // Cleanup temporary directory
-            try { Directory.Delete(deployDir, true); } catch { /* ignore */ }
         }
         catch (Exception ex)
         {
@@ -204,6 +262,14 @@ public class DeploymentOrchestrator : BackgroundService
             await db.SaveChangesAsync(ct);
             Log($"Deployment FAILED: {ex.Message}", "Error");
             _logger.LogError(ex, "Deployment {Id} failed", deploymentId);
+        }
+        finally
+        {
+            // Always remove temporary deploy directory (success or failure)
+            if (!string.IsNullOrEmpty(deployDir) && Directory.Exists(deployDir))
+            {
+                try { Directory.Delete(deployDir, true); } catch { /* ignore */ }
+            }
         }
 
         // Notify status change
