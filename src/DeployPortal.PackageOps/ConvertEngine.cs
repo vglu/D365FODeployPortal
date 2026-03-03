@@ -605,13 +605,18 @@ public class ConvertEngine
         var tempModuleDir = Path.Combine(Path.GetTempPath(), $"module_{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempModuleDir);
 
+        // Write to a unique temp file first, then move to final path. Avoids "file already exists"
+        // when the same package is converted in parallel (e.g. same LCS package deployed to multiple envs).
+        var outputDir = Path.GetDirectoryName(outputZipPath)!;
+        var tempZipPath = Path.Combine(outputDir, $"{Path.GetFileNameWithoutExtension(outputZipPath)}_tmp_{Guid.NewGuid():N}.zip");
+
         try
         {
             ZipFile.ExtractToDirectory(sourceZipPath, tempModuleDir);
-            if (File.Exists(outputZipPath))
-                File.Delete(outputZipPath);
-            using var outputZip = ZipFile.Open(outputZipPath, ZipArchiveMode.Create);
-
+            if (File.Exists(tempZipPath))
+                File.Delete(tempZipPath);
+            using (var outputZip = ZipFile.Open(tempZipPath, ZipArchiveMode.Create))
+            {
             string? licenseFolderPath = null;
             if (licenseFiles != null && licenseFiles.Count > 0 && licenseGuid != null)
                 licenseFolderPath = $"{moduleName}\\_License_{licenseGuid}";
@@ -661,10 +666,16 @@ public class ConvertEngine
                     await fileStream.CopyToAsync(entryStream);
                 }
             }
+            }
+
+            if (File.Exists(outputZipPath))
+                File.Delete(outputZipPath);
+            File.Move(tempZipPath, outputZipPath);
         }
         finally
         {
             try { Directory.Delete(tempModuleDir, true); } catch { }
+            try { if (File.Exists(tempZipPath)) File.Delete(tempZipPath); } catch { }
         }
     }
 

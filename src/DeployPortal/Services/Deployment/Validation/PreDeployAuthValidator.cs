@@ -38,7 +38,7 @@ public class PreDeployAuthValidator : IDeploymentValidator
         var whoOutput = context.PacAuthWhoOutput;
         var whoFriendlyName = PacAuthWhoParser.ParseOrganizationFriendlyName(whoOutput);
 
-        // If setting is on and we have Organization Friendly Name stored for this environment, require exact match
+        // If setting is on and we have Organization Friendly Name stored for this environment, require match (normalized)
         if (context.VerifyOrganizationFriendlyName && !string.IsNullOrWhiteSpace(context.Environment.OrganizationFriendlyName))
         {
             var expectedFriendly = context.Environment.OrganizationFriendlyName.Trim();
@@ -51,7 +51,9 @@ public class PreDeployAuthValidator : IDeploymentValidator
                     $"'pac auth who' output:\n{whoOutput}");
             }
 
-            if (!string.Equals(whoFriendlyName.Trim(), expectedFriendly, StringComparison.OrdinalIgnoreCase))
+            var expectedNorm = PacAuthWhoParser.NormalizeForCompare(expectedFriendly);
+            var whoNorm = PacAuthWhoParser.NormalizeForCompare(whoFriendlyName);
+            if (!string.Equals(whoNorm, expectedNorm, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogError(
                     "PRE-DEPLOYMENT VALIDATION FAILED! Expected Organization Friendly Name: {Expected}, actual: {Actual}",

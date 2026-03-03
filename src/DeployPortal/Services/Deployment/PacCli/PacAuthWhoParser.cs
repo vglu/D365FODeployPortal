@@ -26,6 +26,31 @@ public static class PacAuthWhoParser
             return string.IsNullOrEmpty(value) ? null : value;
         }
 
+        // Fallback: any line containing "Friendly Name" and a colon (e.g. different spacing/encoding)
+        foreach (var row in whoOutput.Split(["\r", "\n"], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = row.Trim();
+            if (trimmed.Contains("Friendly Name", StringComparison.OrdinalIgnoreCase) && trimmed.Contains(':'))
+            {
+                var colonIdx = trimmed.LastIndexOf(':');
+                if (colonIdx >= 0 && colonIdx < trimmed.Length - 1)
+                {
+                    var value = trimmed[(colonIdx + 1)..].Trim();
+                    if (!string.IsNullOrEmpty(value)) return value;
+                }
+            }
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// Normalizes a string for comparison: trim and collapse consecutive whitespace to a single space.
+    /// </summary>
+    public static string NormalizeForCompare(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        var t = value.Trim();
+        return string.Join(' ', t.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 }
