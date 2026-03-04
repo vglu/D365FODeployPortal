@@ -60,8 +60,8 @@ public static class PackageAnalyzer
 
     /// <summary>
     /// Extracts module name from a NuGet-style filename.
-    /// "dynamicsax-sisheavyhighway.1.0.0.0" → "sisheavyhighway"
-    /// "dynamicsax-sisproject360.2021.4.1.1" → "sisproject360"
+    /// "dynamicsax-contosoapp.1.0.0.0" → "contosoapp"
+    /// "dynamicsax-contosoproject.2021.4.1.1" → "contosoproject"
     /// </summary>
     public static string ExtractModuleName(string fileName)
     {
@@ -254,7 +254,7 @@ public static class PackageAnalyzer
     }
 
     /// <summary>
-    /// Extracts version from a model filename (e.g. dynamicsax-sisheavyhighway.2026.1.9.3.nupkg -> "2026.1.9.3").
+    /// Extracts version from a model filename (e.g. dynamicsax-contosoapp.2026.1.9.3.nupkg -> "2026.1.9.3").
     /// Returns empty string if no version segment found.
     /// </summary>
     public static string ExtractVersionFromModelFileName(string fileName)

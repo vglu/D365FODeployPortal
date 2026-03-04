@@ -57,8 +57,8 @@ $correlationId = [Guid]::NewGuid().ToString()
 $timestamp = (Get-Date -Format "M/d/yyyy h:mm:ss tt")
 
 foreach ($mz in $moduleZips) {
-    # Extract module name: dynamicsax-sisheavyhighway.1.0.0.0.zip → sisheavyhighway
-    $baseName = $mz.BaseName  # dynamicsax-sisheavyhighway.1.0.0.0
+    # Extract module name: dynamicsax-contosoapp.1.0.0.0.zip → contosoapp
+    $baseName = $mz.BaseName  # dynamicsax-contosoapp.1.0.0.0
     $modName = $baseName -replace '^dynamicsax-', ''
     # Remove version suffix (first dot followed by digit)
     if ($modName -match '^([^.]*\D)\.(\d.*)$') {

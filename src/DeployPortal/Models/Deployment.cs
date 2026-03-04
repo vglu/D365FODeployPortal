@@ -32,7 +32,7 @@ public class Deployment
     public string? DevOpsTaskUrl { get; set; }
 
     /// <summary>
-    /// For Release Pipeline deployments: URL to the Azure DevOps release (e.g. https://dev.azure.com/.../SIS%20D365FO%20Products/_release?releaseId=123).
+    /// For Release Pipeline deployments: URL to the Azure DevOps release (e.g. https://dev.azure.com/.../Contoso%20D365FO%20Products/_release?releaseId=123).
     /// If set, this deployment was triggered via Release Pipeline, not direct orchestrator.
     /// </summary>
     [MaxLength(2000)]

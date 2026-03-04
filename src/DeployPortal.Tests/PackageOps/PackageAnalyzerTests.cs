@@ -66,15 +66,15 @@ public class PackageAnalyzerTests
     [Test]
     public void ExtractModuleName_StripsDynamicsAxPrefixAndVersion()
     {
-        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-sisheavyhighway.1.0.0.0"), Is.EqualTo("sisheavyhighway"));
-        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-sisproject360.2021.4.1.1"), Is.EqualTo("sisproject360"));
+        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-contosoapp.1.0.0.0"), Is.EqualTo("contosoapp"));
+        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-contosoproject.2021.4.1.1"), Is.EqualTo("contosoproject"));
     }
 
     [Test]
     public void ExtractModuleNameFromNupkg_ReturnsLastSegmentWithoutVersion()
     {
         Assert.That(PackageAnalyzer.ExtractModuleNameFromNupkg("Dynamics.AX.ApplicationSuite.1.0.0.0.nupkg"), Is.EqualTo("applicationsuite"));
-        Assert.That(PackageAnalyzer.ExtractModuleNameFromNupkg("dynamicsax-sisheavyhighway.1.0.0.0.nupkg"), Is.EqualTo("sisheavyhighway"));
+        Assert.That(PackageAnalyzer.ExtractModuleNameFromNupkg("dynamicsax-contosoapp.1.0.0.0.nupkg"), Is.EqualTo("contosoapp"));
     }
 
     [Test]

@@ -12,7 +12,7 @@ dotnet run --project src/VerifyBuildArtifacts
 
 **Custom build link (optional):**
 ```powershell
-dotnet run --project src/VerifyBuildArtifacts -- "https://sisn.visualstudio.com/SIS%20D365FO%20Products/_build/results?buildId=107394"
+dotnet run --project src/VerifyBuildArtifacts -- "https://contoso.visualstudio.com/Contoso%20D365FO%20Products/_build/results?buildId=107394"
 ```
 
 By default the pipeline build from the link above (buildId=107394) is used. The result should match the Python output (Packages: 3 zip, AdditionalLogs: list of files).

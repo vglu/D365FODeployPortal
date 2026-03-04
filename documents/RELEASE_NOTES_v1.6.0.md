@@ -9,7 +9,7 @@
 
 ### LCS merge: resolve model name conflicts
 
-When merging several LCS packages, the same model (e.g. `sisheavyhighway`) may appear in different packages with different versions. Previously both variants were kept side by side. Now:
+When merging several LCS packages, the same model (e.g. `contosoapp`) may appear in different packages with different versions. Previously both variants were kept side by side. Now:
 
 - **Conflict detection** — Before merge, the portal detects models that appear in more than one package (same module name, different versions).
 - **Choose what to keep** — In the Merge dialog you can:
@@ -17,7 +17,7 @@ When merging several LCS packages, the same model (e.g. `sisheavyhighway`) may a
   - **Keep from package 1 / 2 / …** — Keep only the variant from the selected package; the other(s) are excluded from the merged result.
 - **Apply to all** — One action can be applied to all conflicting models (e.g. “Keep from package 2” for every conflict), so you can resolve many conflicts in one click.
 
-Example: Package 1 has `dynamicsax-sisheavyhighway.2026.1.9.3.nupkg`, Package 2 has `dynamicsax-sisheavyhighway.2026.3.3.4.nupkg`. The dialog shows the conflict and lets you keep the first, the second, or both.
+Example: Package 1 has `dynamicsax-contosoapp.2026.1.9.3.nupkg`, Package 2 has `dynamicsax-contosoapp.2026.3.3.4.nupkg`. The dialog shows the conflict and lets you keep the first, the second, or both.
 
 - **API** — `POST /api/packages/merge/preview` returns `Strategy` and `Conflicts`. `POST /api/packages/merge` accepts optional `ModelConflictResolutions` to apply the same choices when merging via API.
 

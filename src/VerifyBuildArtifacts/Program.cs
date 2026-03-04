@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 
 // Build URL: from args or default (artifacts link works too - we only need buildId, org, project)
-var buildUrl = args.Length > 0 ? args[0] : "https://sisn.visualstudio.com/SIS%20D365FO%20Products/_build/results?buildId=107394";
+var buildUrl = args.Length > 0 ? args[0] : "https://contoso.visualstudio.com/Contoso%20D365FO%20Products/_build/results?buildId=107394";
 var pat = Environment.GetEnvironmentVariable("AZURE_DEVOPS_PAT");
 if (string.IsNullOrWhiteSpace(pat))
 {

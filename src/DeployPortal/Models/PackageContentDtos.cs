@@ -6,7 +6,7 @@ namespace DeployPortal.Models;
 public class ModelInfo
 {
     /// <summary>
-    /// Model name (e.g., "ApplicationSuite", "SISHeavyHighway").
+    /// Model name (e.g., "ApplicationSuite", "ContosoApp").
     /// </summary>
     public string Name { get; set; } = string.Empty;
 

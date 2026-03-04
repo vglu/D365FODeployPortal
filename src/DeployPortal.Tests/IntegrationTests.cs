@@ -82,22 +82,22 @@ public class IntegrationTests
     [Test]
     public void ExtractModuleName_StandardName()
     {
-        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-sisheavyhighway.1.0.0.0"),
-            Is.EqualTo("sisheavyhighway"));
+        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-contosoapp.1.0.0.0"),
+            Is.EqualTo("contosoapp"));
     }
 
     [Test]
     public void ExtractModuleName_MultiPartVersion()
     {
-        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-sisproject360.2021.4.1.1"),
-            Is.EqualTo("sisproject360"));
+        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-contosoproject.2021.4.1.1"),
+            Is.EqualTo("contosoproject"));
     }
 
     [Test]
     public void ExtractModuleName_UnderscoreInName()
     {
-        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-sispayroll_isv.1.0.0.0"),
-            Is.EqualTo("sispayroll_isv"));
+        Assert.That(PackageAnalyzer.ExtractModuleName("dynamicsax-contosopayroll_isv.1.0.0.0"),
+            Is.EqualTo("contosopayroll_isv"));
     }
 
     [Test]
@@ -110,8 +110,8 @@ public class IntegrationTests
     [Test]
     public void ExtractModuleNameFromNupkg_DynamicsAxStyle()
     {
-        Assert.That(PackageAnalyzer.ExtractModuleNameFromNupkg("dynamicsax-sisheavyhighway.2026.1.14.2.nupkg"),
-            Is.EqualTo("sisheavyhighway"));
+        Assert.That(PackageAnalyzer.ExtractModuleNameFromNupkg("dynamicsax-contosoapp.2026.1.14.2.nupkg"),
+            Is.EqualTo("contosoapp"));
     }
 
     [Test]
