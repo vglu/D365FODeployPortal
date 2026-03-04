@@ -15,7 +15,7 @@ When you push a tag matching `v*` (e.g. `v1.5.0`), the workflow [.github/workflo
 1. Ensure the version in `src/DeployPortal/DeployPortal.csproj` matches the tag you plan to use (e.g. `1.4.0`).
 2. Create or update the release notes file: `documents/RELEASE_NOTES_v1.4.0.md`.
 3. Commit and push your changes.
-4. Create and push the tag:
+4. Create and push the tag to GitHub:
 
    ```bash
    git tag v1.4.0
