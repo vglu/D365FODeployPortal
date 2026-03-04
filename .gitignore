@@ -62,3 +62,7 @@ coveragereport/
 
 ## PDF generated from markdown (regenerable)
 # *.pdf
+
+## Local / IDE / internal notes (not for repo)
+.cursor/
+tech-docs/
