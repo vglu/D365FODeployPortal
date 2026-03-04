@@ -73,12 +73,24 @@ public static class FileHelper
     /// </summary>
     public static void CopyDirectoryRecursive(string source, string target)
     {
+        CopyDirectoryRecursive(source, target, _ => false);
+    }
+
+    /// <summary>
+    /// Recursively copies a directory, overwriting existing files. Skips files for which skipFile returns true.
+    /// </summary>
+    public static void CopyDirectoryRecursive(string source, string target, Func<string, bool> skipFile)
+    {
         Directory.CreateDirectory(target);
 
         foreach (var file in Directory.GetFiles(source))
-            File.Copy(file, Path.Combine(target, Path.GetFileName(file)), true);
+        {
+            var fileName = Path.GetFileName(file);
+            if (skipFile(fileName)) continue;
+            File.Copy(file, Path.Combine(target, fileName), true);
+        }
 
         foreach (var dir in Directory.GetDirectories(source))
-            CopyDirectoryRecursive(dir, Path.Combine(target, Path.GetFileName(dir)));
+            CopyDirectoryRecursive(dir, Path.Combine(target, Path.GetFileName(dir)), skipFile);
     }
 }

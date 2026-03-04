@@ -254,6 +254,26 @@ public static class PackageAnalyzer
     }
 
     /// <summary>
+    /// Extracts version from a model filename (e.g. dynamicsax-sisheavyhighway.2026.1.9.3.nupkg -> "2026.1.9.3").
+    /// Returns empty string if no version segment found.
+    /// </summary>
+    public static string ExtractVersionFromModelFileName(string fileName)
+    {
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        if (string.IsNullOrEmpty(name)) return "";
+
+        if (!name.StartsWith("dynamicsax-", StringComparison.OrdinalIgnoreCase))
+            return "";
+
+        var afterPrefix = name["dynamicsax-".Length..];
+        var firstDot = afterPrefix.IndexOf('.');
+        if (firstDot < 0) return "";
+
+        var versionPart = afterPrefix[(firstDot + 1)..];
+        return versionPart.All(c => c == '.' || char.IsDigit(c)) ? versionPart : "";
+    }
+
+    /// <summary>
     /// Extracts module name from managed zip filename.
     /// "cch_sureaddress_1_0_0_1_managed.zip" → "cch_sureaddress"
     /// </summary>

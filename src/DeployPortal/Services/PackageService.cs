@@ -328,17 +328,30 @@ public class PackageService
                 $"Please delete all related deployments first.");
         }
 
-        // Delete physical file
+        // Delete physical file first. If this fails, do not remove from DB so the user can retry.
         if (File.Exists(package.StoredFilePath))
         {
+            const int retryDelayMs = 1500;
             try
             {
                 File.Delete(package.StoredFilePath);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to delete package file: {Path}", package.StoredFilePath);
-                // Continue with DB deletion even if file deletion fails
+                _logger.LogWarning(ex, "First attempt failed to delete package file: {Path}, retrying in {Delay}ms", package.StoredFilePath, retryDelayMs);
+                await Task.Delay(retryDelayMs);
+                try
+                {
+                    File.Delete(package.StoredFilePath);
+                }
+                catch (Exception ex2)
+                {
+                    _logger.LogError(ex2, "Failed to delete package file after retry: {Path}", package.StoredFilePath);
+                    throw new InvalidOperationException(
+                        $"Cannot delete package '{package.Name}': the file could not be removed from disk (it may be in use by another process or antivirus). " +
+                        "Try again in a moment, or delete the file manually from the package storage folder.",
+                        ex2);
+                }
             }
         }
 

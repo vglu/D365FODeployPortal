@@ -35,7 +35,19 @@ public class MergeService
         return PackageAnalyzer.DetectMergeStrategy(types);
     }
 
-    public async Task<Package> MergePackagesAsync(List<Package> packages, string outputName, Action<string>? onLog = null)
+    /// <summary>
+    /// Returns LCS model conflicts (same model name in more than one package). Empty when strategy is not LCS.
+    /// </summary>
+    public static List<LcsModelConflict> GetMergeConflicts(List<Package> packages)
+    {
+        if (packages.Count < 2) return new List<LcsModelConflict>();
+        var strategy = DetectMergeStrategy(packages);
+        if (strategy != "LCS") return new List<LcsModelConflict>();
+        var paths = packages.OrderBy(p => p.UploadedAt).Select(p => p.StoredFilePath).ToList();
+        return MergeEngine.DetectLcsModelConflicts(paths);
+    }
+
+    public async Task<Package> MergePackagesAsync(List<Package> packages, string outputName, Action<string>? onLog = null, List<LcsModelConflictResolution>? modelResolutions = null)
     {
         if (packages.Count < 2)
             throw new ArgumentException("At least 2 packages are required for merge.");
@@ -54,7 +66,7 @@ public class MergeService
         }
         else
         {
-            resultDir = engine.MergeLcs(packagePaths, onLog);
+            resultDir = engine.MergeLcs(packagePaths, onLog, modelResolutions);
         }
 
         try

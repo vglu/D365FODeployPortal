@@ -17,7 +17,69 @@ public class MergeEngine
         _tempDir = tempDir;
     }
 
-    public string MergeLcs(List<string> packagePaths, Action<string>? onLog = null)
+    /// <summary>
+    /// Scans LCS packages and returns model conflicts: same module name in more than one package.
+    /// </summary>
+    public static List<LcsModelConflict> DetectLcsModelConflicts(List<string> packagePaths)
+    {
+        var perPackage = new List<Dictionary<string, LcsModelConflictVariant>>();
+
+        foreach (var zipPath in packagePaths)
+        {
+            var byModule = new Dictionary<string, LcsModelConflictVariant>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                using var zip = ZipFile.OpenRead(zipPath);
+                foreach (var entry in zip.Entries)
+                {
+                    if (entry.Length == 0 && (entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\')))
+                        continue;
+                    var normalized = entry.FullName.Replace('\\', '/');
+                    if (!normalized.StartsWith("AOSService/", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var fileName = normalized.Split('/').Last();
+                    if (string.IsNullOrEmpty(fileName)) continue;
+                    if (!fileName.StartsWith("dynamicsax-", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var ext = Path.GetExtension(fileName);
+                    if (!ext.Equals(".nupkg", StringComparison.OrdinalIgnoreCase) && !ext.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var moduleName = PackageAnalyzer.ExtractModuleNameFromNupkg(fileName);
+                    if (string.IsNullOrEmpty(moduleName) || moduleName == "unknown") continue;
+
+                    var version = PackageAnalyzer.ExtractVersionFromModelFileName(fileName);
+                    if (!byModule.TryGetValue(moduleName, out var variant))
+                    {
+                        variant = new LcsModelConflictVariant { PackageIndex = perPackage.Count, Version = version };
+                        byModule[moduleName] = variant;
+                    }
+                    if (!variant.FileNames.Contains(fileName))
+                        variant.FileNames.Add(fileName);
+                }
+            }
+            catch { /* skip invalid zip */ }
+
+            perPackage.Add(byModule);
+        }
+
+        var conflicts = new List<LcsModelConflict>();
+        var allModuleNames = perPackage.SelectMany(d => d.Keys).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var moduleName in allModuleNames)
+        {
+            var variants = new List<LcsModelConflictVariant>();
+            for (int i = 0; i < perPackage.Count; i++)
+            {
+                if (perPackage[i].TryGetValue(moduleName, out var v))
+                    variants.Add(v);
+            }
+            if (variants.Count >= 2)
+                conflicts.Add(new LcsModelConflict { ModuleName = moduleName, Variants = variants });
+        }
+        return conflicts;
+    }
+
+    public string MergeLcs(List<string> packagePaths, Action<string>? onLog = null, List<LcsModelConflictResolution>? resolutions = null)
     {
         var workDir = Path.Combine(_tempDir, $"merge_lcs_{Guid.NewGuid():N}");
         var commonDir = Path.Combine(workDir, "CommonPackage");
@@ -42,8 +104,30 @@ public class MergeEngine
             var targetAOS = FileHelper.FindChildDirectory(commonRoot, "AOSService") ?? Path.Combine(commonRoot, "AOSService");
             if (Directory.Exists(sourceAOS))
             {
+                var resolutionMap = resolutions != null
+                    ? resolutions.Where(r => r.KeepPackageIndex >= 0).ToDictionary(r => r.ModuleName, r => r.KeepPackageIndex, StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, int>();
+
+                foreach (var (moduleName, keepPkg) in resolutionMap.Where(kv => kv.Value == i))
+                {
+                    DeleteModelFilesFromDirectory(targetAOS, moduleName);
+                    onLog?.Invoke($"  Removed existing model '{moduleName}' (keeping variant from package {i + 1})");
+                }
+
+                bool SkipFile(string fileName)
+                {
+                    if (!fileName.StartsWith("dynamicsax-", StringComparison.OrdinalIgnoreCase)) return false;
+                    var ext = Path.GetExtension(fileName);
+                    if (!ext.Equals(".nupkg", StringComparison.OrdinalIgnoreCase) && !ext.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    var mod = PackageAnalyzer.ExtractModuleNameFromNupkg(fileName);
+                    if (string.IsNullOrEmpty(mod)) return false;
+                    if (!resolutionMap.TryGetValue(mod, out var keep)) return false;
+                    return keep != i;
+                }
+
                 onLog?.Invoke("  Merging AOSService content");
-                FileHelper.CopyDirectoryRecursive(sourceAOS, targetAOS);
+                FileHelper.CopyDirectoryRecursive(sourceAOS, targetAOS, SkipFile);
             }
 
             var xmlPath1 = Path.Combine(commonRoot, "HotfixInstallationInfo.xml");
@@ -317,6 +401,25 @@ public class MergeEngine
             entryStream.Write(ms.ToArray());
         }
         catch { /* JSON parse failure - leave as-is */ }
+    }
+
+    private static void DeleteModelFilesFromDirectory(string dir, string moduleName)
+    {
+        if (!Directory.Exists(dir)) return;
+        foreach (var file in Directory.GetFiles(dir))
+        {
+            var fileName = Path.GetFileName(file);
+            if (!fileName.StartsWith("dynamicsax-", StringComparison.OrdinalIgnoreCase)) continue;
+            var ext = Path.GetExtension(fileName);
+            if (!ext.Equals(".nupkg", StringComparison.OrdinalIgnoreCase) && !ext.Equals(".zip", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (string.Equals(PackageAnalyzer.ExtractModuleNameFromNupkg(fileName), moduleName, StringComparison.OrdinalIgnoreCase))
+            {
+                try { File.Delete(file); } catch { }
+            }
+        }
+        foreach (var sub in Directory.GetDirectories(dir))
+            DeleteModelFilesFromDirectory(sub, moduleName);
     }
 
     // ---- HotfixInstallationInfo.xml merge ----

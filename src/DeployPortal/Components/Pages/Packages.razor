@@ -340,6 +340,38 @@
             </MudAlert>
         }
 
+        @if (_mergeStrategy == "LCS" && _mergeConflicts.Count > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">
+                <strong>@_mergeConflicts.Count model(s)</strong> appear in more than one package with different versions. Choose what to keep in the merged package.
+            </MudAlert>
+            <MudText Typo="Typo.body2" Class="mb-2">Apply same action to all:</MudText>
+            <MudSelect @bind-Value="_mergeConflictActionForAll" Label="For all conflicting models" Variant="Variant.Outlined" Dense="true" Class="mb-3" Style="min-width: 280px;">
+                <MudSelectItem Value="@(-1)">Keep both (all variants)</MudSelectItem>
+                @for (var idx = 0; idx < _mergePackages.Count; idx++)
+                {
+                    var i = idx;
+                    <MudSelectItem Value="@i">Keep from package @(i + 1): @_mergePackages[i].Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudList T="LcsModelConflict" Dense="true" Class="mb-3" Style="max-height: 200px; overflow-y: auto;">
+                @foreach (var c in _mergeConflicts)
+                {
+                    <MudListItem T="LcsModelConflict">
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.body2"><strong>@c.ModuleName</strong></MudText>
+                            @foreach (var v in c.Variants)
+                            {
+                                <MudText Typo="Typo.caption" Class="mud-secondary-text">
+                                    Package @(v.PackageIndex + 1): @string.Join(", ", v.FileNames) @(string.IsNullOrEmpty(v.Version) ? "" : $"({v.Version})")
+                                </MudText>
+                            }
+                        </MudStack>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+
         <MudText Typo="Typo.body2" Class="mb-3">
             Merging @_mergePackages.Count packages:
         </MudText>
@@ -623,6 +655,9 @@
     private string _mergeName = "";
     private string? _mergeStrategy;
     private List<Package> _mergePackages = new();
+    private List<LcsModelConflict> _mergeConflicts = new();
+    /// <summary>-1 = keep both for all; 0,1,2,... = keep variant from that package index for all.</summary>
+    private int _mergeConflictActionForAll = -1;
 
     // Load from build dialog
     private bool _loadFromBuildVisible;
@@ -1071,6 +1106,8 @@
     {
         _mergePackages = _selectedForMerge.OrderBy(p => p.UploadedAt).ToList();
         _mergeStrategy = MergeService.DetectMergeStrategy(_mergePackages);
+        _mergeConflicts = MergeService.GetMergeConflicts(_mergePackages);
+        _mergeConflictActionForAll = -1;
         _mergeName = $"Merged_{string.Join("_", _mergePackages.Select(p => p.Name.Replace(" ", "")))}";
         if (_mergeName.Length > 100)
             _mergeName = $"Merged_{DateTime.UtcNow:yyyyMMdd_HHmmss}";
@@ -1080,11 +1117,18 @@
     private async Task ConfirmMerge()
     {
         if (string.IsNullOrWhiteSpace(_mergeName)) return;
+        List<LcsModelConflictResolution>? resolutions = null;
+        if (_mergeConflicts.Count > 0 && _mergeConflictActionForAll >= 0)
+        {
+            resolutions = _mergeConflicts
+                .Select(c => new LcsModelConflictResolution { ModuleName = c.ModuleName, KeepPackageIndex = _mergeConflictActionForAll })
+                .ToList();
+        }
         _merging = true;
         StateHasChanged();
         try
         {
-            await MergeSvc.MergePackagesAsync(_mergePackages, _mergeName.Trim());
+            await MergeSvc.MergePackagesAsync(_mergePackages, _mergeName.Trim(), null, resolutions);
             Snackbar.Add("Packages merged successfully!", Severity.Success);
             _mergeDialogVisible = false;
             await LoadData();

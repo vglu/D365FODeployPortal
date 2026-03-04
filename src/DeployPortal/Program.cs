@@ -488,6 +488,40 @@ try
     .WithOpenApi()
     .Produces<PackageDto>(200).Produces(400).Produces(404);
 
+    api.MapPost("/packages/merge/preview", async (MergePreviewRequestDto body, PackageService pkgSvc, MergeService mergeSvc) =>
+    {
+        if (body.PackageIds == null || body.PackageIds.Count < 2)
+            return Results.BadRequest("At least 2 package IDs required.");
+        var packages = new List<DeployPortal.Models.Package>();
+        foreach (var pid in body.PackageIds.Distinct())
+        {
+            var p = await pkgSvc.GetByIdAsync(pid);
+            if (p == null) return Results.NotFound($"Package {pid} not found.");
+            packages.Add(p);
+        }
+        var ordered = packages.OrderBy(p => p.UploadedAt).ToList();
+        var strategy = MergeService.DetectMergeStrategy(ordered);
+        var conflicts = MergeService.GetMergeConflicts(ordered);
+        var response = new MergePreviewResponseDto
+        {
+            Strategy = strategy,
+            Conflicts = conflicts.Select(c => new MergeConflictDto
+            {
+                ModuleName = c.ModuleName,
+                Variants = c.Variants.Select(v => new MergeConflictVariantDto
+                {
+                    PackageIndex = v.PackageIndex,
+                    FileNames = v.FileNames,
+                    Version = v.Version
+                }).ToList()
+            }).ToList()
+        };
+        return Results.Ok(response);
+    })
+    .WithName("MergePreview")
+    .WithOpenApi()
+    .Produces<MergePreviewResponseDto>(200).Produces(400).Produces(404);
+
     api.MapPost("/packages/merge", async (MergeRequestDto body, PackageService pkgSvc, MergeService mergeSvc) =>
     {
         if (body.PackageIds == null || body.PackageIds.Count < 2)
@@ -499,11 +533,19 @@ try
             if (p == null) return Results.NotFound($"Package {pid} not found.");
             packages.Add(p);
         }
+        var ordered = packages.OrderBy(p => p.UploadedAt).ToList();
         var outputName = string.IsNullOrWhiteSpace(body.MergeName)
             ? $"Merged_{DateTime.UtcNow:yyyyMMdd_HHmmss}" : body.MergeName!.Trim();
+        List<DeployPortal.PackageOps.LcsModelConflictResolution>? resolutions = null;
+        if (body.ModelConflictResolutions != null && body.ModelConflictResolutions.Count > 0)
+        {
+            resolutions = body.ModelConflictResolutions
+                .Select(r => new DeployPortal.PackageOps.LcsModelConflictResolution { ModuleName = r.ModuleName, KeepPackageIndex = r.KeepPackageIndex })
+                .ToList();
+        }
         try
         {
-            var result = await mergeSvc.MergePackagesAsync(packages, outputName);
+            var result = await mergeSvc.MergePackagesAsync(ordered, outputName, null, resolutions);
             return Results.Created($"/api/packages/{result.Id}", PackageDto.From(result));
         }
         catch (ArgumentException ex) { return Results.BadRequest(ex.Message); }
