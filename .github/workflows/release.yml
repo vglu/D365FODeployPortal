@@ -1,9 +1,9 @@
 # ============================================================
 # Release & Package workflow
 # ============================================================
-# - Trigger: push tag v* (e.g. v1.8.0)
+# - Trigger: push tag v* (e.g. v1.9.0)
 # - Builds Windows self-contained zip and publishes to GitHub Release
-# - Builds Windows Docker image: pushes to GHCR (ghcr.io) and Docker Hub (if secrets set)
+# - Builds Linux Docker image: pushes to GHCR (ghcr.io) and Docker Hub (if secrets set)
 # - Docker Hub push: set repo secrets DOCKERHUB_USERNAME, DOCKERHUB_TOKEN (job runs always; if missing, job fails but workflow continues)
 # ============================================================
 
@@ -18,7 +18,7 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  # ---- Windows self-contained build → Release artifact ----
+  # ---- Windows self-contained build -> Release artifact ----
   build-windows:
     runs-on: windows-latest
     steps:
@@ -61,9 +61,9 @@ jobs:
           name: deploy-portal-windows
           path: DeployPortal-${{ env.VERSION }}-win-x64.zip
 
-  # ---- Docker build (Windows containers) → GitHub Container Registry ----
+  # ---- Docker build (Linux) -> GitHub Container Registry ----
   build-docker:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -73,33 +73,31 @@ jobs:
 
       - name: Set version from tag
         id: version
-        shell: bash
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
       - name: Log in to GitHub Container Registry
-        shell: bash
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Build Docker image
         run: |
-          $tag = "${{ github.ref_name }}"
-          $repo = "${{ github.repository_owner }}".ToLower()
-          docker build `
-            -t "ghcr.io/${repo}/d365fo-deploy-portal:${tag}" `
-            -t "ghcr.io/${repo}/d365fo-deploy-portal:latest" `
+          TAG="${{ github.ref_name }}"
+          REPO=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker build \
+            -t "ghcr.io/${REPO}/d365fo-deploy-portal:${TAG}" \
+            -t "ghcr.io/${REPO}/d365fo-deploy-portal:latest" \
             .
 
       - name: Push Docker image to GHCR
         run: |
-          $tag = "${{ github.ref_name }}"
-          $repo = "${{ github.repository_owner }}".ToLower()
-          docker push "ghcr.io/${repo}/d365fo-deploy-portal:${tag}"
-          docker push "ghcr.io/${repo}/d365fo-deploy-portal:latest"
+          TAG="${{ github.ref_name }}"
+          REPO=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker push "ghcr.io/${REPO}/d365fo-deploy-portal:${TAG}"
+          docker push "ghcr.io/${REPO}/d365fo-deploy-portal:latest"
 
   # ---- Push same image to Docker Hub ----
   push-dockerhub:
     needs: [build-docker]
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
       contents: read
@@ -111,25 +109,22 @@ jobs:
           ref: ${{ github.ref }}
 
       - name: Log in to Docker Hub
-        shell: bash
         run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
 
       - name: Log in to GitHub Container Registry
-        shell: bash
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Pull from GHCR and push to Docker Hub
         run: |
-          $tag = "${{ github.ref_name }}"
-          $repo = "${{ github.repository_owner }}".ToLower()
-          docker pull "ghcr.io/${repo}/d365fo-deploy-portal:${tag}"
-          docker tag "ghcr.io/${repo}/d365fo-deploy-portal:${tag}" "vglu/d365fo-deploy-portal:${tag}"
-          docker tag "ghcr.io/${repo}/d365fo-deploy-portal:${tag}" "vglu/d365fo-deploy-portal:latest"
-          docker push "vglu/d365fo-deploy-portal:${tag}"
+          TAG="${{ github.ref_name }}"
+          REPO=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker pull "ghcr.io/${REPO}/d365fo-deploy-portal:${TAG}"
+          docker tag "ghcr.io/${REPO}/d365fo-deploy-portal:${TAG}" "vglu/d365fo-deploy-portal:${TAG}"
+          docker tag "ghcr.io/${REPO}/d365fo-deploy-portal:${TAG}" "vglu/d365fo-deploy-portal:latest"
+          docker push "vglu/d365fo-deploy-portal:${TAG}"
           docker push "vglu/d365fo-deploy-portal:latest"
 
       - name: Update Docker Hub repository overview
-        shell: bash
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
