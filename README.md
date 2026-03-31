@@ -68,7 +68,7 @@ See sections below for details.
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 - [ModelUtil.exe](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-tools/models) — installed with D365FO development tools
-- [PAC CLI](https://learn.microsoft.com/en-us/power-platform/developer/cli/introduction) — `dotnet tool install --global Microsoft.PowerApps.CLI.Tool`
+- [PAC CLI](https://learn.microsoft.com/en-us/power-platform/developer/cli/introduction) — install via **Windows MSI** from https://aka.ms/PowerAppsCLI (required for `pac package deploy`; the `dotnet tool install` version does NOT include this command)
 - An Azure AD Service Principal for non-interactive PAC authentication (see [Setup](#service-principal-setup))
 
 ### Run
@@ -96,39 +96,41 @@ Open `http://localhost:5137` in your browser.
 3. Go to **Packages** → upload LCS or Unified ZIP packages
 4. Go to **Deploy** → select a package, check target environments, click **Start Deploy**
 
-## Docker
+## Docker (Windows containers)
 
-The application can be distributed as a Linux Docker container. This is the easiest way to deploy on any machine with Docker installed — no .NET, no dependencies.
+The application is distributed as a **Windows Docker container** (Windows Server Core LTSC 2022). Windows containers are required because `pac package deploy` — the command that deploys packages to Power Platform — is only available in the Windows MSI distribution of PAC CLI.
+
+> **Prerequisite:** Docker Desktop must be in **Windows containers** mode. Right-click Docker tray icon → "Switch to Windows containers...".
+
+A Linux Dockerfile (`Dockerfile.linux`) is available for convert-only use (no deployment).
 
 ### Quick Start (Docker)
 
 The image is published to **GitHub Container Registry**: `ghcr.io/vglu/d365fo-deploy-portal` (see [Releases & Packages](documents/RELEASES_AND_PACKAGES.md)). For local build:
 
-```bash
-# Build and run with Docker Compose
+```powershell
+# Build and run with Docker Compose (Windows containers mode required)
 docker compose up -d
 
 # Open in browser
-http://localhost:5000
+# http://localhost:5000
 ```
 
 ### Docker Commands
 
-```bash
-# Build the image (use your tag for push to registry)
+```powershell
+# Build the image
 docker build -t d365fo-deploy-portal .
-docker build -t vglu/d365fo-deploy-portal:latest .
 
 # Run standalone (without Compose)
-docker run -d \
-  --name deploy-portal \
-  -p 5000:5000 \
-  -v deploy-data:/app/data \
-  -v deploy-packages:/app/packages \
+docker run -d --name deploy-portal `
+  -p 5000:5000 `
+  -v deploy-data:C:\app\data `
+  -v deploy-packages:C:\app\packages `
   d365fo-deploy-portal
 
 # Run with CLI conversion only (no web server, one-off)
-docker run --rm -v /path/to/packages:/data d365fo-deploy-portal convert /data/MyLcs.zip /data/Unified.zip
+docker run --rm -v C:\Packages:C:\data d365fo-deploy-portal convert C:\data\MyLcs.zip C:\data\Unified.zip
 
 # View logs
 docker compose logs -f
@@ -145,19 +147,22 @@ docker compose up -d --build
 | Component | Status |
 |-----------|--------|
 | .NET 9.0 Runtime | Included |
-| PAC CLI | Installed automatically |
+| PAC CLI (Windows MSI) | Installed — includes `pac package deploy` |
+| Azure CLI | Installed — for Release Pipeline (Universal Package upload) |
 | Built-in LCS→Unified converter | Active (no ModelUtil.exe needed) |
-| SQLite database | Created automatically in `/app/data/` |
-| Uploaded packages | Stored in `/app/packages/` |
+| SQLite database | Created automatically in `C:\app\data\` |
+| Uploaded packages | Stored in `C:\app\packages\` |
 
 ### Docker Volumes
 
 | Volume | Container Path | Purpose |
 |--------|---------------|---------|
-| `deploy-portal-data` | `/app/data` | Database, encryption keys, user settings |
-| `deploy-portal-packages` | `/app/packages` | Uploaded packages |
+| `deploy-portal-data` | `C:\app\data` | Database, encryption keys, user settings |
+| `deploy-portal-packages` | `C:\app\packages` | Uploaded packages |
 
 > **Important:** These volumes persist data across container restarts and rebuilds. Do not use `docker compose down -v` unless you want to erase all data.
+
+> **Upgrading from v1.7.0 (Linux)?** Old Linux volumes are not compatible with Windows containers. Back up data, then `docker volume rm deploy-portal-data deploy-portal-packages`.
 
 ### Changing the Port
 
@@ -182,11 +187,11 @@ All settings can be configured via environment variables in `docker-compose.yml`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DeployPortal__DatabasePath` | `/app/data/deploy-portal.db` | SQLite database location |
-| `DeployPortal__PackageStoragePath` | `/app/packages` | Package storage directory |
-| `DeployPortal__TempWorkingDir` | `/tmp/DeployPortal` | Temporary directory for merge/convert |
-| `DeployPortal__DataProtectionKeysPath` | `/app/data/keys` | Encryption keys directory |
-| `DeployPortal__UserSettingsPath` | `/app/data/usersettings.json` | UI settings file (in volume so they persist) |
+| `DeployPortal__DatabasePath` | `C:\app\data\deploy-portal.db` | SQLite database location |
+| `DeployPortal__PackageStoragePath` | `C:\app\packages` | Package storage directory |
+| `DeployPortal__TempWorkingDir` | `C:\temp\DeployPortal` | Temporary directory for merge/convert |
+| `DeployPortal__DataProtectionKeysPath` | `C:\app\data\keys` | Encryption keys directory |
+| `DeployPortal__UserSettingsPath` | `C:\app\data\usersettings.json` | UI settings file (in volume so they persist) |
 | `DeployPortal__ConverterEngine` | `BuiltIn` | Converter engine (`BuiltIn` or `ModelUtil`) |
 | `DeployPortal__ProcessingMode` | `Local` | Processing mode (`Local` or `Azure`) |
 
@@ -194,61 +199,44 @@ All settings can be configured via environment variables in `docker-compose.yml`
 
 You can use the container only for LCS → Unified conversion, without starting the web server. Pass `convert` as the first argument and mount a folder with your package.
 
-**Examples:**
+**Examples (Windows containers):**
 
-**Windows — CMD:** (use `C:\Packages` or your folder; inside container the mount is `/data`)
-```cmd
-docker run --rm -v C:\Packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip /data/MyUnified.zip
-REM Output omitted — creates /data/MyLcs_Unified.zip
-docker run --rm -v C:\Packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip
-```
-
-**Windows — PowerShell:**
 ```powershell
-docker run --rm -v C:\Packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip /data/MyUnified.zip
-# Output omitted — creates /data/MyLcs_Unified.zip
-docker run --rm -v C:\Packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcs.zip
+# Convert with explicit output path
+docker run --rm -v C:\Packages:C:\data d365fo-deploy-portal convert C:\data\MyLcs.zip C:\data\MyUnified.zip
+
+# Convert with default output name (<name>_Unified.zip)
+docker run --rm -v C:\Packages:C:\data d365fo-deploy-portal convert C:\data\MyLcs.zip
+
+# Using environment variables
+docker run --rm -v C:\Packages:C:\data `
+  -e CONVERT_INPUT=C:\data\package.zip `
+  -e CONVERT_OUTPUT=C:\data\out.zip `
+  d365fo-deploy-portal convert
 ```
 
-**Linux/macOS:**
+**Linux container (convert-only, no deployment):**
+
 ```bash
-docker run --rm -v /home/user/packages:/data vglu/d365fo-deploy-portal:latest convert /data/MyLcsPackage.zip /data/Unified.zip
-```
-
-**Using environment variables (e.g. in scripts):**
-
-**CMD:**
-```cmd
-docker run --rm -v C:\Packages:/data -e CONVERT_INPUT=/data/package.zip -e CONVERT_OUTPUT=/data/out.zip vglu/d365fo-deploy-portal:latest convert
-```
-
-**PowerShell:**
-```powershell
-docker run --rm -v C:\Packages:/data -e CONVERT_INPUT=/data/package.zip -e CONVERT_OUTPUT=/data/out.zip vglu/d365fo-deploy-portal:latest convert
+docker build -f Dockerfile.linux -t d365fo-deploy-portal-linux .
+docker run --rm -v /home/user/packages:/data d365fo-deploy-portal-linux convert /data/MyLcs.zip /data/Unified.zip
 ```
 
 **CLI conversion without Docker (local .NET):**
 
-**PowerShell (from repository root):**
 ```powershell
 dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip" "C:\Packages\MyUnified.zip"
 # Default output: same folder, <name>_Unified.zip
 dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip"
 ```
 
-**CMD (from repository root):**
-```cmd
-dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip" "C:\Packages\MyUnified.zip"
-REM Default output: same folder, <name>_Unified.zip
-dotnet run --project src/DeployPortal -- convert "C:\Packages\MyLcs.zip"
-```
-
 If the output path is omitted, the result is written as `<input name>_Unified.zip` in the same directory as the input file. Exit codes: `0` = success, `1` = usage/input error, `2` = template not found, `3` = conversion error.
 
-### Docker Limitations
+### Docker Notes
 
-- **ModelUtil.exe** is not available in the Linux container. Only the built-in converter is supported. This covers all standard LCS→Unified conversion scenarios.
+- **Image size:** ~5 GB (Windows Server Core base). First pull takes longer than Linux images.
 - **No authentication** is built in. Do not expose the container port to the internet without a reverse proxy with authentication (e.g., nginx + OAuth2 Proxy, Traefik + basic auth).
+- **Linux conversion only:** Use `Dockerfile.linux` for a lightweight (~500 MB) Linux image that supports package conversion but not deployment.
 
 ## Publishing for Distribution
 
@@ -306,7 +294,7 @@ Copy the entire `publish/` folder to the target machine. That's it — .NET Runt
 |-----------|-----------|------|----------------|
 | .NET Runtime | **No** | — | Bundled in self-contained publish |
 | ModelUtil.exe | Only for LCS→Unified conversion | When deploying LCS packages | Installed with [D365FO development tools](https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/dev-tools/models) |
-| PAC CLI | Only for deployment | When deploying to Power Platform | `dotnet tool install --global Microsoft.PowerApps.CLI.Tool` |
+| PAC CLI | Only for deployment | When deploying to Power Platform | Install via **Windows MSI** from https://aka.ms/PowerAppsCLI (`pac package deploy` is MSI-only) |
 | Azure AD Service Principal | Only for deployment | For non-interactive PAC auth | Run `scripts\Setup-ServicePrincipal.ps1` or follow `documents/Setup-ServicePrincipal-Manual.md` |
 
 > **Note:** If you only upload already-Unified packages, `ModelUtil.exe` is not needed at all.
@@ -382,7 +370,7 @@ This output can be pasted directly into the **Import from Script** dialog on the
 
 ### Settings Priority
 
-1. **UI Settings** (`usersettings.json`) — highest priority, managed via Settings page. Path (Windows): **CMD** `%LocalAppData%\DeployPortal\usersettings.json` — **PowerShell** `$env:LOCALAPPDATA\DeployPortal\usersettings.json`. In Docker: `/app/data/usersettings.json` (in volume).
+1. **UI Settings** (`usersettings.json`) — highest priority, managed via Settings page. Path (Windows): **CMD** `%LocalAppData%\DeployPortal\usersettings.json` — **PowerShell** `$env:LOCALAPPDATA\DeployPortal\usersettings.json`. In Docker: `C:\app\data\usersettings.json` (in volume).
 2. **appsettings.json** — default values
 3. **Built-in defaults** — auto-detection (PAC from PATH, storage in app directory)
 
@@ -407,7 +395,7 @@ When you convert a package from Unified back to LCS, the default output contains
 
 Leave the setting empty to keep the current “minimal” LCS output.
 
-**In Docker:** the image includes a full LCS template `ImportISVLicense.zip` (from CustomDeployablePackage) at `/app/Resources/LcsTemplate/ImportISVLicense.zip`, used by default for Unified→LCS. To use a different template, set `DeployPortal__LcsTemplatePath` or mount your own (e.g. `/app/lcs-template.zip`).
+**In Docker:** the image includes a full LCS template `ImportISVLicense.zip` (from CustomDeployablePackage) at `C:\app\Resources\LcsTemplate\ImportISVLicense.zip`, used by default for Unified→LCS. To use a different template, set `DeployPortal__LcsTemplatePath` or mount your own.
 
 **About .nupkg / module files:** The converter generates from the Unified package both `dynamicsax-*.zip` in `AOSService/Packages/files/` and `dynamicsax-*.nupkg` in `AOSService/Packages/`. Each `.nupkg` is a NuGet-style zip (`.nuspec` manifest plus module content). You do not put module files in the template; the template only provides the folder structure (and optionally the Microsoft runtime files — exe, DLLs — if you use your own LCS package as template).
 
