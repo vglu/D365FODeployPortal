@@ -25,7 +25,7 @@
                     <MudSelectItem T="int?" Value="@((int?)env.Id)">@env.Name</MudSelectItem>
                 }
             </MudSelect>
-            <MudButton Variant="Variant.Outlined" OnClick="@LoadActiveData" StartIcon="@Icons.Material.Filled.Search">
+            <MudButton Variant="Variant.Outlined" OnClick="@LoadActiveData" StartIcon="@Icons.Material.Outlined.Search">
                 Filter
             </MudButton>
         </MudStack>
@@ -62,9 +62,29 @@
                         @context.Status
                     </MudChip>
                 </MudTd>
-                <MudTd DataLabel="Queued">@context.QueuedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudTd>
-                <MudTd DataLabel="Started">@(context.StartedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
-                <MudTd DataLabel="Completed">@(context.CompletedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
+                <MudTd DataLabel="Queued">
+                    <MudTooltip Text="@context.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                        <span>@context.QueuedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                    </MudTooltip>
+                </MudTd>
+                <MudTd DataLabel="Started">
+                    @if (context.StartedAt.HasValue)
+                    {
+                        <MudTooltip Text="@context.StartedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                            <span>@context.StartedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </MudTooltip>
+                    }
+                    else { <span>-</span> }
+                </MudTd>
+                <MudTd DataLabel="Completed">
+                    @if (context.CompletedAt.HasValue)
+                    {
+                        <MudTooltip Text="@context.CompletedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                            <span>@context.CompletedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </MudTooltip>
+                    }
+                    else { <span>-</span> }
+                </MudTd>
                 <MudTd DataLabel="Duration">@GetDuration(context)</MudTd>
                 <MudTd DataLabel="Links" Style="text-align:center">
                     @if (!string.IsNullOrEmpty(context.ReleaseUrl))
@@ -119,7 +139,7 @@
                     <MudSelectItem T="int?" Value="@((int?)env.Id)">@env.Name</MudSelectItem>
                 }
             </MudSelect>
-            <MudButton Variant="Variant.Outlined" OnClick="@LoadArchivedData" StartIcon="@Icons.Material.Filled.Search">
+            <MudButton Variant="Variant.Outlined" OnClick="@LoadArchivedData" StartIcon="@Icons.Material.Outlined.Search">
                 Filter
             </MudButton>
         </MudStack>
@@ -155,9 +175,29 @@
                         @context.Status
                     </MudChip>
                 </MudTd>
-                <MudTd DataLabel="Queued">@context.QueuedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudTd>
-                <MudTd DataLabel="Completed">@(context.CompletedAt?.ToLocalTime().ToString("HH:mm:ss") ?? "-")</MudTd>
-                <MudTd DataLabel="Archived">@(context.ArchivedAt?.ToLocalTime().ToString("MM-dd HH:mm") ?? "-")</MudTd>
+                <MudTd DataLabel="Queued">
+                    <MudTooltip Text="@context.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                        <span>@context.QueuedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                    </MudTooltip>
+                </MudTd>
+                <MudTd DataLabel="Completed">
+                    @if (context.CompletedAt.HasValue)
+                    {
+                        <MudTooltip Text="@context.CompletedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                            <span>@context.CompletedAt.Value.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </MudTooltip>
+                    }
+                    else { <span>-</span> }
+                </MudTd>
+                <MudTd DataLabel="Archived">
+                    @if (context.ArchivedAt.HasValue)
+                    {
+                        <MudTooltip Text="@context.ArchivedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                            <span>@context.ArchivedAt.Value.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                        </MudTooltip>
+                    }
+                    else { <span>-</span> }
+                </MudTd>
                 <MudTd DataLabel="Links" Style="text-align:center">
                     @if (!string.IsNullOrEmpty(context.ReleaseUrl))
                     {

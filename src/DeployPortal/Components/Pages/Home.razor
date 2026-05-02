@@ -27,7 +27,7 @@
         <MudStack Spacing="3">
             <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Container CLI (convert without web UI)</MudText>
             <MudText Typo="Typo.body2">Run the container with <code>convert</code> and a mounted folder. Input and output paths are given inside the container.</MudText>
-            <MudPaper Class="pa-3" Elevation="0" Style="background: var(--mud-palette-background-grey); font-family: monospace; font-size: 0.85rem; overflow-x: auto;">
+            <MudPaper Class="pa-3 code-block" Elevation="0">
                 <pre class="ma-0">@GetCliExampleStatic()</pre>
             </MudPaper>
 
@@ -36,12 +36,12 @@
             <MudLink Href="@_swaggerUrl" Target="_blank" Class="font-weight-medium">@_swaggerUrl</MudLink>
 
             <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Example curl: upload → convert → download</MudText>
-            <MudPaper Class="pa-3" Elevation="0" Style="background: var(--mud-palette-background-grey); font-family: monospace; font-size: 0.85rem; overflow-x: auto;">
+            <MudPaper Class="pa-3 code-block" Elevation="0">
                 <pre class="ma-0">@GetCurlExampleFromBaseUrl()</pre>
             </MudPaper>
 
             <MudText Typo="Typo.subtitle1" Class="font-weight-bold">Example in pipeline (Azure DevOps / GitLab CI)</MudText>
-            <MudPaper Class="pa-3" Elevation="0" Style="background: var(--mud-palette-background-grey); font-family: monospace; font-size: 0.85rem; overflow-x: auto;">
+            <MudPaper Class="pa-3 code-block" Elevation="0">
                 <pre class="ma-0">@GetPipelineExampleStatic()</pre>
             </MudPaper>
         </MudStack>
@@ -71,7 +71,7 @@
                 <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Large" Color="Color.Primary" />
                 <div>
                     <MudText Typo="Typo.h4">@_packageCount</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">Packages</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Default">Packages</MudText>
                 </div>
             </MudStack>
         </MudPaper>
@@ -83,7 +83,7 @@
                 <MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Large" Color="Color.Success" />
                 <div>
                     <MudText Typo="Typo.h4">@_envCount</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">Environments</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Default">Environments</MudText>
                 </div>
             </MudStack>
         </MudPaper>
@@ -95,7 +95,7 @@
                 <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Size="Size.Large" Color="Color.Warning" />
                 <div>
                     <MudText Typo="Typo.h4">@_deployCount</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">Deployments</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Default">Deployments</MudText>
                 </div>
             </MudStack>
         </MudPaper>

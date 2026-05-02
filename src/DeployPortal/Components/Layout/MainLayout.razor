@@ -6,6 +6,12 @@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
+@* W3.3 (EPIC-UI-OVERLAP-FIX): skip-to-content link for keyboard
+   users. Visually hidden until focused, then jumps to the main
+   content region, bypassing the drawer's nav links. The .skip-link
+   class is defined in app.css. *@
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
 <MudLayout>
     <MudAppBar Elevation="1" Dense="true">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start"
@@ -14,8 +20,8 @@
             <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.h6" Color="Color.Inherit" Style="text-decoration:none; font-weight:600">
                 D365FO Deploy Portal
             </MudLink>
-            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
-                     Style="color:rgba(255,255,255,0.7); border-color:rgba(255,255,255,0.3); height:20px; font-size:0.7rem">
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Class="dp-text-chip-meta"
+                     Style="color:rgba(255,255,255,0.7); border-color:rgba(255,255,255,0.3); height:20px;">
                 v@(_version)
             </MudChip>
         </MudStack>
@@ -33,7 +39,7 @@
     </MudDrawer>
 
     <MudMainContent Class="pt-16 px-4" Style="display:flex; flex-direction:column; min-height:calc(100vh - 64px)">
-        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-4" Style="flex:1">
+        <MudContainer id="main-content" MaxWidth="MaxWidth.ExtraLarge" Class="my-4" Style="flex:1">
             @Body
         </MudContainer>
 
@@ -105,14 +111,14 @@
                 </MudStack>
 
                 <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Secondary" />
+                    <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Info" />
                     <MudLink Href="mailto:vhlu@sims-service.com" Typo="Typo.body2">
                         vhlu@@sims-service.com
                     </MudLink>
                 </MudStack>
 
                 <MudStack Row="true" Justify="Justify.Center" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudIcon Icon="@Icons.Material.Filled.Language" Size="Size.Small" Color="Color.Tertiary" />
+                    <MudIcon Icon="@Icons.Material.Filled.Language" Size="Size.Small" Color="Color.Info" />
                     <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.body2">
                         sims-service.com — Product Page
                     </MudLink>

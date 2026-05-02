@@ -65,7 +65,7 @@
         <MudText Typo="Typo.h6">Active Packages</MudText>
         @if (_selectedForMerge.Count >= 2)
         {
-            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                        StartIcon="@Icons.Material.Filled.MergeType" Class="ml-3"
                        OnClick="@MergeSelected" Disabled="@_merging">
                 @(_merging ? "Merging..." : $"Merge {_selectedForMerge.Count} packages")
@@ -81,7 +81,7 @@
         }
         <MudSpacer />
         <MudTextField @bind-Value="_searchText" Placeholder="Search..." Variant="Variant.Outlined"
-                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
                       Immediate="true" DebounceInterval="200" Margin="Margin.Dense"
                       Clearable="true" Style="max-width:280px" />
     </ToolBarContent>
@@ -109,7 +109,7 @@
             </MudStack>
         </MudTd>
         <MudTd DataLabel="File">
-            <span class="mud-text-secondary" style="font-size:0.85rem">@context.OriginalFileName</span>
+            <span class="mud-text-secondary dp-text-table-aux">@context.OriginalFileName</span>
         </MudTd>
         <MudTd DataLabel="Type">
             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
@@ -199,12 +199,12 @@
                             Download License Files
                         </MudMenuItem>
                     }
-                    <MudMenuItem Icon="@Icons.Material.Filled.Refresh"
+                    <MudMenuItem Icon="@Icons.Material.Outlined.Refresh"
                                  OnClick="@(() => RefreshLicenseInfo(context))">
                         Refresh license info
                     </MudMenuItem>
                     <MudDivider />
-                    <MudMenuItem Icon="@Icons.Material.Filled.Edit"
+                    <MudMenuItem Icon="@Icons.Material.Outlined.Edit"
                                  OnClick="@(() => OpenEditPackage(context))">
                         Edit
                     </MudMenuItem>
@@ -222,17 +222,21 @@
         </MudTd>
     </RowTemplate>
     <ChildRowContent>
+        @* W1.3 (EPIC-UI-OVERLAP-FIX): the detail block now sits flush
+           inside the row via .master-detail-row (see app.css). Previously
+           a MudPaper with `ma-2` margin created a visual gap making the
+           detail look detached from its parent row. Left accent bar +
+           inset background give the master→detail visual link. *@
         @if (!string.IsNullOrEmpty(context.MergeSourceNames) && _expandedRows.Contains(context.Id))
         {
-            <MudTr>
-                <td colspan="8" style="padding:0">
-                    <MudPaper Class="pa-3 ma-2" Elevation="0"
-                              Style="background:var(--mud-palette-background-gray)">
+            <MudTr Class="master-detail-row">
+                <td colspan="8">
+                    <div class="master-detail-content">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
                             @if (context.PackageType == "Merged")
                             {
-                                <MudIcon Icon="@Icons.Material.Filled.MergeType" Size="Size.Small" Color="Color.Secondary" />
-                                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Merged from:</MudText>
+                                <MudIcon Icon="@Icons.Material.Filled.MergeType" Size="Size.Small" Color="Color.Primary" />
+                                <MudText Typo="Typo.subtitle2" Color="Color.Primary">Merged from:</MudText>
                             }
                             else
                             {
@@ -249,7 +253,7 @@
                                 </MudStack>
                             }
                         </MudStack>
-                    </MudPaper>
+                    </div>
                 </td>
             </MudTr>
         }
@@ -277,13 +281,25 @@
             </HeaderContent>
             <RowTemplate>
                 <MudTd DataLabel="Name">@context.Name</MudTd>
-                <MudTd DataLabel="File"><span class="mud-text-secondary" style="font-size:0.85rem">@context.OriginalFileName</span></MudTd>
+                <MudTd DataLabel="File"><span class="mud-text-secondary dp-text-table-aux">@context.OriginalFileName</span></MudTd>
                 <MudTd DataLabel="Type">
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@PkgTypeColor(context.PackageType)">@context.PackageType</MudChip>
                 </MudTd>
                 <MudTd DataLabel="Size">@FormatSize(context.FileSizeBytes)</MudTd>
-                <MudTd DataLabel="Uploaded">@context.UploadedAt.ToLocalTime().ToString("MM-dd HH:mm")</MudTd>
-                <MudTd DataLabel="Archived">@(context.ArchivedAt?.ToLocalTime().ToString("MM-dd HH:mm") ?? "-")</MudTd>
+                <MudTd DataLabel="Uploaded">
+                    <MudTooltip Text="@context.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                        <span>@context.UploadedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                    </MudTooltip>
+                </MudTd>
+                <MudTd DataLabel="Archived">
+                    @if (context.ArchivedAt.HasValue)
+                    {
+                        <MudTooltip Text="@context.ArchivedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
+                            <span>@context.ArchivedAt.Value.ToLocalTime().ToString("MM-dd HH:mm")</span>
+                        </MudTooltip>
+                    }
+                    else { <span>-</span> }
+                </MudTd>
                 <MudTd DataLabel="Actions">
                     <MudTooltip Text="Download">
                         <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Primary"
@@ -314,7 +330,7 @@
 <MudDialog @bind-Visible="_mergeDialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudIcon Icon="@Icons.Material.Filled.MergeType" Color="Color.Secondary" />
+            <MudIcon Icon="@Icons.Material.Filled.MergeType" Color="Color.Primary" />
             <MudText Typo="Typo.h6">Merge Packages</MudText>
         </MudStack>
     </TitleContent>
@@ -393,7 +409,7 @@
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="@(() => _mergeDialogVisible = false)">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="@ConfirmMerge"
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@ConfirmMerge"
                    Disabled="@(string.IsNullOrWhiteSpace(_mergeName) || _merging || _mergeStrategy == null)"
                    StartIcon="@Icons.Material.Filled.MergeType">
             @if (_merging)
@@ -416,7 +432,7 @@
 <MudDialog @bind-Visible="_editPackageDialogVisible" Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudIcon Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" />
+            <MudIcon Icon="@Icons.Material.Outlined.Edit" Color="Color.Primary" />
             <MudText Typo="Typo.h6">Edit Package</MudText>
         </MudStack>
     </TitleContent>
@@ -443,7 +459,7 @@
             <MudText Typo="Typo.h6">Load package(s) from Azure DevOps build</MudText>
             @if (_loadFromBuildStep == 2)
             {
-                <MudChip T="string" Size="Size.Small" Color="Color.Secondary">Step 2: Artifacts</MudChip>
+                <MudChip T="string" Size="Size.Small" Color="Color.Info">Step 2: Artifacts</MudChip>
             }
             else
             {
@@ -494,7 +510,7 @@
                                  Variant="Variant.Outlined" Immediate="true" Style="min-width:180px" Clearable="true" />
                     <MudDatePicker @bind-Date="_filterDateFrom" Label="Date from" Variant="Variant.Outlined" DateFormat="yyyy-MM-dd" Clearable="true" />
                     <MudDatePicker @bind-Date="_filterDateTo" Label="Date to" Variant="Variant.Outlined" DateFormat="yyyy-MM-dd" Clearable="true" />
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Search"
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Outlined.Search"
                                OnClick="@OnLoadBuilds" Disabled="@(_loadingBuilds || !HasEffectivePat())">
                         @(_loadingBuilds ? "Loading..." : "Search builds")
                     </MudButton>
@@ -1445,7 +1461,11 @@
     // ===== Helpers =====
     private static Color PkgTypeColor(string type)
     {
-        if (type == "Merged") return Color.Secondary;
+        // W2.4 (EPIC-UI-OVERLAP-FIX): kept in sync with Deploy.razor's
+        // PkgTypeColor — Merged → Warning (synthetic, double-check),
+        // Unified → Success (deploy-ready), Other → Warning (unknown
+        // shape, may not deploy), LCS → Default (raw input format).
+        if (type == "Merged") return Color.Warning;
         if (type == "Unified") return Color.Success;
         if (type == "Other") return Color.Warning;
         return Color.Default; // LCS

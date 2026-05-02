@@ -1,9 +1,11 @@
 @page "/deployments/{Id:int}"
 @using Microsoft.AspNetCore.SignalR.Client
+@using Microsoft.AspNetCore.Components.Web.Virtualization
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject NavigationManager Nav
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 @implements IAsyncDisposable
 
 <PageTitle>Deployment #@Id</PageTitle>
@@ -24,9 +26,14 @@
 
 @if (_deployment != null)
 {
-    <MudGrid>
-        <MudItem xs="12" md="6">
-            <MudPaper Class="pa-4" Elevation="2">
+    @* W1.4 (EPIC-UI-OVERLAP-FIX): grid was previously a single
+       MudItem md="6" leaving the right half empty — looked like the
+       page hadn't finished loading. Now: info table on the left,
+       summary card on the right (status + duration prominently),
+       so both halves carry weight. On md and below they stack. *@
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4 h-100" Elevation="2">
                 <MudText Typo="Typo.h5" Class="mb-3">Deployment #@_deployment.Id</MudText>
                 <MudSimpleTable Dense="true">
                     <tbody>
@@ -69,23 +76,89 @@
                 </MudSimpleTable>
             </MudPaper>
         </MudItem>
+
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4 h-100" Elevation="2">
+                <MudText Typo="Typo.h5" Class="mb-3">Summary</MudText>
+                <MudStack Spacing="3">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@GetStatusIcon(_deployment.Status)"
+                                 Color="@GetStatusColor(_deployment.Status)"
+                                 Size="Size.Large" />
+                        <div>
+                            <MudText Typo="Typo.h6">@_deployment.Status</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Default">@GetStatusHint(_deployment.Status)</MudText>
+                        </div>
+                    </MudStack>
+
+                    <MudDivider />
+
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Default">Duration</MudText>
+                        <MudText Typo="Typo.h6">@GetDuration(_deployment)</MudText>
+                    </div>
+
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Default">Log entries</MudText>
+                        <MudText Typo="Typo.h6">@_logs.Count</MudText>
+                    </div>
+
+                    @if (_logs.Any(l => l.Level == "Error"))
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">
+                            @_logs.Count(l => l.Level == "Error") error(s) in log
+                        </MudAlert>
+                    }
+                    else if (_logs.Any(l => l.Level == "Warning"))
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-2">
+                            @_logs.Count(l => l.Level == "Warning") warning(s) in log
+                        </MudAlert>
+                    }
+                </MudStack>
+            </MudPaper>
+        </MudItem>
     </MudGrid>
 
-    <MudText Typo="Typo.h5" Class="mt-4 mb-2">Deployment Log</MudText>
-    <MudPaper Class="pa-3" Elevation="2" Style="max-height:500px; overflow-y:auto; font-family:monospace; font-size:0.85rem; background:#1e1e1e; color:#ddd;">
-        @foreach (var log in _logs)
-        {
-            <div style="@GetLogStyle(log.Level)">
-                <span style="color:#888;">@log.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
-                <span style="margin:0 8px;">[@log.Level]</span>
-                @log.Message
-            </div>
-        }
+    @* W2.1 (EPIC-UI-OVERLAP-FIX): log pane is now virtualized via
+       <Virtualize>. ItemSize=22 matches single-line monospace at
+       0.85rem with 1px vertical padding (see .log-line in app.css).
+       Long messages still wrap via white-space:pre-wrap and overflow
+       below; Virtualize tolerates per-row variance.
+       Auto-scroll: a JS helper scrolls _logPane to the bottom after
+       each new log row, but only if the toggle is on AND the user
+       hasn't manually scrolled away. *@
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4 mb-2" Spacing="2">
+        <MudText Typo="Typo.h5">Deployment Log</MudText>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">
+            @_logs.Count entries
+        </MudChip>
+        <MudSpacer />
+        <MudSwitch T="bool" @bind-Value="_autoScroll" Color="Color.Primary" Size="Size.Small">
+            Auto-scroll
+        </MudSwitch>
+    </MudStack>
+    @* Plain <div> instead of MudPaper because MudPaper does not
+       expose its ElementReference; we need the ref for JS-driven
+       auto-scroll. .code-surface already provides border + bg via
+       --mud-palette-* tokens. *@
+    <div class="code-surface pa-3" @ref="_logPaneRef"
+         style="max-height: clamp(320px, calc(100vh - 480px), 720px); overflow-y: auto;">
         @if (!_logs.Any())
         {
-            <div style="color:#888;">No log entries yet. Waiting...</div>
+            <div class="log-ts">No log entries yet. Waiting...</div>
         }
-    </MudPaper>
+        else
+        {
+            <Virtualize Items="_logs" Context="log" ItemSize="22" OverscanCount="20">
+                <div class="log-line @(log.Level == "Error" ? "log-error" : log.Level == "Warning" ? "log-warning" : "")">
+                    <span class="log-ts">@log.Timestamp.ToLocalTime().ToString("HH:mm:ss")</span>
+                    <span class="log-tag">[@log.Level]</span>
+                    @log.Message
+                </div>
+            </Virtualize>
+        }
+    </div>
 }
 else
 {
@@ -98,6 +171,9 @@ else
     private Deployment? _deployment;
     private List<DeploymentLog> _logs = new();
     private HubConnection? _hubConnection;
+    private bool _autoScroll = true;
+    private ElementReference _logPaneRef;
+    private bool _newLogPending;
 
     protected override async Task OnInitializedAsync()
     {
@@ -134,6 +210,9 @@ else
                 Level = level,
                 Message = message
             });
+            // W2.1: flag a new log; OnAfterRenderAsync will pump the
+            // JS auto-scroll AFTER Virtualize has laid out the new row.
+            _newLogPending = true;
             InvokeAsync(StateHasChanged);
         });
 
@@ -155,6 +234,30 @@ else
         DeploymentStatus.Deploying or DeploymentStatus.Converting or DeploymentStatus.Merging => Color.Info,
         DeploymentStatus.Queued => Color.Default,
         _ => Color.Default
+    };
+
+    private string GetStatusIcon(DeploymentStatus status) => status switch
+    {
+        DeploymentStatus.Success => Icons.Material.Filled.CheckCircle,
+        DeploymentStatus.Failed => Icons.Material.Filled.Error,
+        DeploymentStatus.Cancelled => Icons.Material.Filled.Cancel,
+        DeploymentStatus.Deploying => Icons.Material.Filled.RocketLaunch,
+        DeploymentStatus.Converting => Icons.Material.Filled.Transform,
+        DeploymentStatus.Merging => Icons.Material.Filled.MergeType,
+        DeploymentStatus.Queued => Icons.Material.Filled.Schedule,
+        _ => Icons.Material.Filled.HelpOutline
+    };
+
+    private string GetStatusHint(DeploymentStatus status) => status switch
+    {
+        DeploymentStatus.Success => "Completed without errors",
+        DeploymentStatus.Failed => "Stopped due to error — check the log",
+        DeploymentStatus.Cancelled => "Stopped by user",
+        DeploymentStatus.Deploying => "PAC is pushing the package",
+        DeploymentStatus.Converting => "LCS → Unified conversion",
+        DeploymentStatus.Merging => "Combining LCS sources",
+        DeploymentStatus.Queued => "Waiting for an available worker",
+        _ => ""
     };
 
     private async Task CancelDeployment()
@@ -202,12 +305,29 @@ else
         return duration.ToString(@"mm\:ss");
     }
 
-    private string GetLogStyle(string level) => level switch
+    // GetLogStyle removed in W1.4 — log levels now styled via .log-error /
+    // .log-warning classes in app.css using --mud-palette-* tokens.
+
+    // W2.1: pump auto-scroll after new logs land. We only force the
+    // scroll when (a) the user has the toggle on AND (b) they were
+    // already near the bottom — otherwise we respect their manual
+    // scroll position.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        "Error" => "color: #f44336;",
-        "Warning" => "color: #ff9800;",
-        _ => ""
-    };
+        if (!_newLogPending) return;
+        _newLogPending = false;
+        if (!_autoScroll) return;
+        try
+        {
+            var atBottom = await JS.InvokeAsync<bool>("deployPortalLog.isAtBottom", _logPaneRef, 64);
+            if (atBottom)
+            {
+                await JS.InvokeVoidAsync("deployPortalLog.scrollToBottom", _logPaneRef);
+            }
+        }
+        catch (JSDisconnectedException) { /* circuit closed during teardown — safe to ignore */ }
+        catch (TaskCanceledException) { /* component disposed mid-call */ }
+    }
 
     public async ValueTask DisposeAsync()
     {

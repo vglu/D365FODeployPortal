@@ -1,0 +1,56 @@
+/* ============================================================
+   tokens.css — design tokens for D365FO Deploy Portal
+   ============================================================
+   Owned by: EPIC-UI-OVERLAP-FIX, Wave 2.3.
+
+   Purpose: a small set of CSS custom properties for cases where
+   `var(--mud-palette-*)` does not cover the need (font sizes for
+   captions / chips, monospace font stack, log-level accents).
+
+   Rules:
+     1. Do NOT add tokens here for things MudBlazor already gives
+        you via `var(--mud-palette-*)`. Reuse those.
+     2. Every token here must be referenced from at least one
+        place. Unused tokens are dead weight.
+     3. When adding a token, update the table at the bottom of
+        documents/EPIC-UI-OVERLAP-FIX.md (Wave 2.3 section).
+
+   Inheritance: tokens cascade from `:root` so they are also
+   available inside MudBlazor's portal-rendered overlays
+   (dialogs, popovers).
+   ============================================================ */
+:root {
+    /* Type — only the sizes that don't map cleanly to MudBlazor's
+       `Typo.caption` / `Typo.body2`. The chip-meta size is smaller
+       than caption (0.75rem default) and is used for version chips
+       in AppBar / NavMenu footer. */
+    --dp-fz-chip-meta: 0.7rem;     /* AppBar version chip, NavMenu by-line */
+    --dp-fz-table-aux: 0.85rem;    /* secondary text inside table cells (URLs, friendly-names, hashes) */
+    --dp-fz-code: 0.85rem;         /* monospace blocks (logs, license XML) */
+
+    /* Code / monospace stack — single source of truth so log
+       viewer, license viewer, and any future code surfaces match. */
+    --dp-font-mono: 'Consolas', 'Monaco', 'Ubuntu Mono', 'Courier New', monospace;
+
+    /* Master-detail accent — the left bar that visually links
+       a child row to its parent in expandable tables. */
+    --dp-md-accent-width: 3px;
+}
+
+/* Utility classes built on top of the tokens. Prefer using these
+   in markup over inline `style="font-size:..."`. */
+.dp-text-chip-meta { font-size: var(--dp-fz-chip-meta); }
+.dp-text-table-aux { font-size: var(--dp-fz-table-aux); }
+.dp-font-mono     { font-family: var(--dp-font-mono); }
+
+/* Code block — read-only multi-line monospace surface used for
+   shell-command examples (Home page snippets, Environments setup
+   guide). Wraps long lines, scrolls horizontally if needed.
+   Distinct from .code-surface (logs) which has a border + scroll. */
+.code-block {
+    background: var(--mud-palette-background-grey);
+    font-family: var(--dp-font-mono);
+    font-size: var(--dp-fz-code);
+    white-space: pre-wrap;
+    overflow-x: auto;
+}

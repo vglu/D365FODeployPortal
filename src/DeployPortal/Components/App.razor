@@ -7,6 +7,13 @@
     <base href="/" />
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    @* W2.0 (EPIC-UI-OVERLAP-FIX): app.css was previously not referenced
+       in this file, so wwwroot/app.css (containing .packages-drop-zone,
+       .license-viewer-paper, and W1 fixes for drawer / master-detail /
+       code-surface) was never applied in the browser. Fixing this is a
+       prerequisite for any of the W1 visual fixes to take effect. *@
+    <link href="app.css" rel="stylesheet" />
+    <link href="css/tokens.css" rel="stylesheet" />
     <HeadOutlet @rendermode="InteractiveServer" />
 </head>
 
@@ -14,6 +21,7 @@
     <Routes @rendermode="InteractiveServer" />
     <script src="_framework/blazor.web.js"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="js/log-scroll.js"></script>
     <script>
         window.copyToClipboard = function(text) {
             return navigator.clipboard && navigator.clipboard.writeText(text);

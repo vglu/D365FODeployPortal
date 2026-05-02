@@ -23,7 +23,7 @@
             <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Href="/packages" />
             <MudText Typo="Typo.h4">@_package?.Name</MudText>
             <MudChip T="string" Size="Size.Small">@_package?.PackageType</MudChip>
-            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary">
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">
                 Format: @PackageFormatLabel(_package?.PackageType)
             </MudChip>
         </MudStack>
@@ -55,7 +55,7 @@
                                 @if (context.HasLicenses)
                                 {
                                     <MudTooltip Text="Contains license files (Unified package)">
-                                        <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Gavel" Color="Color.Secondary" Variant="Variant.Outlined">
+                                        <MudChip T="string" Size="Size.Small" Icon="@Icons.Material.Filled.Gavel" Color="Color.Info" Variant="Variant.Outlined">
                                             Licenses
                                         </MudChip>
                                     </MudTooltip>

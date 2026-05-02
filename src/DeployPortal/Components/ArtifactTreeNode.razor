@@ -15,7 +15,7 @@
                 <MudIcon Icon="@(_isExpanded ? Icons.Material.Filled.FolderOpen : Icons.Material.Filled.Folder)" Size="Size.Small" Color="Color.Default" />
                 <MudCheckBox T="bool" Value="@SelectedKeys.Contains(_nodeKey)"
                             ValueChanged="@(v => SelectionChanged.InvokeAsync((_nodeKey, v)))" />
-                <MudText Typo="Typo.body2">@Node.Name <MudChip T="string" Size="Size.Small" Style="font-size:0.7rem">folder → zip</MudChip></MudText>
+                <MudText Typo="Typo.body2">@Node.Name <MudChip T="string" Size="Size.Small" Class="dp-text-chip-meta">folder → zip</MudChip></MudText>
             }
             else
             {

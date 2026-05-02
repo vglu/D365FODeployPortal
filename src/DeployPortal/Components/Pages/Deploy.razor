@@ -23,18 +23,34 @@
 <MudText Typo="Typo.h4" Class="mb-4">Deploy Package</MudText>
 
 <MudGrid Spacing="4">
-    @* ===== PACKAGE SELECTION ===== *@
+    @* ===== PACKAGE SELECTION =====
+       W1.2 (EPIC-UI-OVERLAP-FIX): Replaced hardcoded `Height="460px"`
+       with viewport-aware calc. 320px reservation accounts for app-bar
+       (64) + page heading (~56) + grid spacing (~16) + deploy action
+       paper below (~140) + footer (~64). 280px floor keeps the table
+       useful on short viewports; on tall monitors it grows. *@
+    @* W3.4 (EPIC-UI-OVERLAP-FIX): role="radiogroup" + aria-label on
+       the wrapping section makes the single-select intent legible to
+       screen readers. Each row carries a visually-hidden "Selected"
+       prefix when it's the active choice. *@
     <MudItem xs="12" lg="6">
-        <MudPaper Class="pa-0" Elevation="2" Style="display:flex; flex-direction:column; height:100%;">
+        <MudPaper Class="pa-0" Elevation="2" Style="display:flex; flex-direction:column; height:100%;"
+                  role="radiogroup" aria-label="Select a package to deploy">
             <MudTable Items="@_packages" Dense="true" Hover="true" Elevation="0"
                       RowClass="cursor-pointer" RowClassFunc="@PkgRowClass"
                       OnRowClick="@OnPackageRowClick" T="Package"
-                      Loading="@_loading" FixedHeader="true" Height="460px"
+                      Loading="@_loading" FixedHeader="true"
+                      Height="clamp(280px, calc(100vh - 320px), 720px)"
                       Filter="new Func<Package, bool>(PkgFilter)"
-                      Breakpoint="Breakpoint.None">
+                      Breakpoint="Breakpoint.Sm">
                 <ToolBarContent>
+                    @* W3.2 (EPIC-UI-OVERLAP-FIX): removed "1." / "2." prefixes —
+                       they implied a stepper/wizard, but the page is two parallel
+                       selectors, not sequential steps. The user can pick in any
+                       order. The Deploy button below states the current need
+                       ("Select a package" / "Select at least one environment"). *@
                     <MudIcon Icon="@Icons.Material.Filled.Inventory2" Color="Color.Primary" Class="mr-2" />
-                    <MudText Typo="Typo.h6">1. Select Package</MudText>
+                    <MudText Typo="Typo.h6">Select Package</MudText>
                     @if (_selectedPackageId.HasValue)
                     {
                         <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined"
@@ -44,7 +60,7 @@
                     }
                     <MudSpacer />
                     <MudTextField @bind-Value="_pkgSearch" Placeholder="Search..." Variant="Variant.Outlined"
-                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
                                   Immediate="true" DebounceInterval="200" Margin="Margin.Dense"
                                   Clearable="true" Style="max-width:220px" />
                 </ToolBarContent>
@@ -59,7 +75,8 @@
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                             @if (_selectedPackageId == context.Id)
                             {
-                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" />
+                                <span class="visually-hidden">Selected: </span>
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Color="Color.Success" aria-hidden="true" />
                             }
                             <span style="@(_selectedPackageId == context.Id ? "font-weight:600" : "")">@context.Name</span>
                         </MudStack>
@@ -83,18 +100,21 @@
         </MudPaper>
     </MudItem>
 
-    @* ===== ENVIRONMENT SELECTION ===== *@
+    @* ===== ENVIRONMENT SELECTION =====
+       W1.2 (EPIC-UI-OVERLAP-FIX): same calc as Package table above,
+       so both panels visually mirror each other and scale together. *@
     <MudItem xs="12" lg="6">
         <MudPaper Class="pa-0" Elevation="2" Style="display:flex; flex-direction:column; height:100%;">
             <MudTable Items="@_environments" Dense="true" Hover="true" Elevation="0"
                       RowClass="cursor-pointer" RowClassFunc="@EnvRowClass"
                       OnRowClick="@OnEnvRowClick" T="Models.Environment"
-                      Loading="@_loading" FixedHeader="true" Height="460px"
+                      Loading="@_loading" FixedHeader="true"
+                      Height="clamp(280px, calc(100vh - 320px), 720px)"
                       Filter="new Func<Models.Environment, bool>(EnvFilter)"
-                      Breakpoint="Breakpoint.None">
+                      Breakpoint="Breakpoint.Sm">
                 <ToolBarContent>
                     <MudIcon Icon="@Icons.Material.Filled.Cloud" Color="Color.Success" Class="mr-2" />
-                    <MudText Typo="Typo.h6">2. Environments</MudText>
+                    <MudText Typo="Typo.h6">Select Environments</MudText>
                     @if (_selectedEnvIds.Any())
                     {
                         <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Class="ml-2">
@@ -109,7 +129,7 @@
                                        title="Deselect all" Size="Size.Small" />
                     </MudButtonGroup>
                     <MudTextField @bind-Value="_envSearch" Placeholder="Search..." Variant="Variant.Outlined"
-                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
                                   Immediate="true" DebounceInterval="200" Margin="Margin.Dense"
                                   Clearable="true" Style="max-width:220px" />
                 </ToolBarContent>
@@ -130,13 +150,13 @@
                         <span style="@(_selectedEnvIds.Contains(context.Id) ? "font-weight:600" : "")">@context.Name</span>
                     </MudTd>
                     <MudTd DataLabel="URL">
-                        <span class="mud-text-secondary" style="font-size:0.85rem">@context.Url</span>
+                        <span class="mud-text-secondary dp-text-table-aux">@context.Url</span>
                     </MudTd>
                     <MudTd DataLabel="Auth">
                         @if (context.HasServicePrincipal)
                         { <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary">SP</MudChip> }
                         else
-                        { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary">Interactive</MudChip> }
+                        { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">Interactive</MudChip> }
                     </MudTd>
                     <MudTd DataLabel="Created">
                         <MudTooltip Text="@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
@@ -166,13 +186,13 @@
                 <MudText Typo="Typo.body1">
                     Deploy <strong>@pkg?.Name</strong> to <strong>@_selectedEnvIds.Count</strong> environment(s)
                 </MudText>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                <MudText Typo="Typo.caption" Color="Color.Default">
                     Each environment will be deployed in parallel
                 </MudText>
             }
             else
             {
-                <MudText Typo="Typo.body1" Color="Color.Secondary">
+                <MudText Typo="Typo.body1" Color="Color.Default">
                     @if (!_selectedPackageId.HasValue && !_selectedEnvIds.Any())
                     { @("Select a package and at least one environment") }
                     else if (!_selectedPackageId.HasValue)
@@ -188,7 +208,7 @@
                    OnClick="@StartDeploy">
             @(_deploying ? "Queuing..." : "Start Deploy")
         </MudButton>
-        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Large"
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Large"
                    StartIcon="@Icons.Material.Filled.AccountTree"
                    Disabled="@(!_selectedPackageId.HasValue || _releaseDialogOpen)"
                    OnClick="@OpenReleasePipelineDialog" title="Deploy selected package via Azure DevOps Release Pipeline">
@@ -255,7 +275,7 @@
         {
             <MudText Typo="Typo.body2" Class="mb-2">Pipeline: <strong>@_releaseDefinitionDetail.Name</strong></MudText>
             <MudText Typo="Typo.subtitle2" Class="mb-2">Select artifact for Universal Package upload:</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">
+            <MudText Typo="Typo.caption" Color="Color.Default" Class="mb-2">
                 Choose the Universal Package artifact. Other artifacts (e.g. Build) will use latest version automatically.
             </MudText>
             <MudRadioGroup T="string" @bind-Value="_releaseSelectedAlias">
@@ -674,7 +694,11 @@
 
     private static Color PkgTypeColor(string t)
     {
-        if (t == "Merged") return Color.Secondary;
+        // W2.4 (EPIC-UI-OVERLAP-FIX): Merged → Warning (visually
+        // distinct: yellow chip = "this is a synthetic package made
+        // from multiple sources, double-check before deploy"). Unified
+        // → Success (deployable as-is). Default → grey.
+        if (t == "Merged") return Color.Warning;
         if (t == "Unified") return Color.Success;
         return Color.Default;
     }

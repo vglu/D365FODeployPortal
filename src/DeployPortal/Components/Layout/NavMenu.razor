@@ -1,38 +1,49 @@
 @using System.Reflection
 
-<MudNavMenu>
-    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
-        Home
-    </MudNavLink>
-    <MudNavLink Href="/packages" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Inventory2">
-        Packages
-    </MudNavLink>
-    <MudNavLink Href="/environments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Cloud">
-        Environments
-    </MudNavLink>
-    <MudNavLink Href="/deploy" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.RocketLaunch">
-        Deploy
-    </MudNavLink>
-    <MudNavLink Href="/deployments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.History">
-        History
-    </MudNavLink>
-    <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">
-        Settings
-    </MudNavLink>
-</MudNavMenu>
+@* ============================================================
+   W1.1 (EPIC-UI-OVERLAP-FIX): drawer footer was previously
+   `position: absolute; bottom: 0` which positioned it relative
+   to the nearest positioned ancestor (often body) instead of
+   the drawer — on short viewports it covered the last nav link.
+   Now: nav + footer are siblings inside a flex column that
+   fills the drawer height; footer sits via margin-top:auto and
+   never overlaps menu items.
+   ============================================================ *@
+<div class="nav-menu-flex">
+    <MudNavMenu>
+        <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
+            Home
+        </MudNavLink>
+        <MudNavLink Href="/packages" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Inventory2">
+            Packages
+        </MudNavLink>
+        <MudNavLink Href="/environments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Cloud">
+            Environments
+        </MudNavLink>
+        <MudNavLink Href="/deploy" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.RocketLaunch">
+            Deploy
+        </MudNavLink>
+        <MudNavLink Href="/deployments" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.History">
+            History
+        </MudNavLink>
+        <MudNavLink Href="/settings" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Settings">
+            Settings
+        </MudNavLink>
+    </MudNavMenu>
 
-<div style="position:absolute; bottom:0; left:0; right:0; padding:12px 16px; border-top:1px solid var(--mud-palette-lines-default);">
-    <MudStack Spacing="1">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudIcon Icon="@Icons.Material.Filled.Rocket" Size="Size.Small" Color="Color.Primary" />
-            <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.caption" Color="Color.Default" Style="text-decoration:none; font-weight:600">
-                Deploy Portal <span style="opacity:0.7">v@(_version)</span>
-            </MudLink>
+    <div class="nav-menu-footer">
+        <MudStack Spacing="1">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Rocket" Size="Size.Small" Color="Color.Primary" />
+                <MudLink Href="@_productPageUrl" Target="_blank" Typo="Typo.caption" Color="Color.Default" Style="text-decoration:none; font-weight:600">
+                    Deploy Portal <span style="opacity:0.7">v@(_version)</span>
+                </MudLink>
+            </MudStack>
+            <MudText Typo="Typo.caption" Class="nav-menu-footer-by">
+                by <MudLink Href="@_companyUrl" Target="_blank" Typo="Typo.caption" Color="Color.Default" Style="text-decoration:none; font-weight:600">SIMS tech</MudLink>
+            </MudText>
         </MudStack>
-        <MudText Typo="Typo.caption" Style="opacity:0.6; font-size:0.7rem">
-            by <MudLink Href="@_companyUrl" Target="_blank" Typo="Typo.caption" Color="Color.Default" Style="text-decoration:none; font-weight:600">SIMS tech</MudLink>
-        </MudText>
-    </MudStack>
+    </div>
 </div>
 
 @code {

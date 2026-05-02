@@ -13,11 +13,11 @@
         <MudText Typo="Typo.h6">Deployment safety</MudText>
     </MudStack>
     <MudSwitch @bind-Value="_simulateDeployment" Label="Simulate deployment" Color="Color.Warning" Class="mb-2" />
-    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+    <MudText Typo="Typo.body2" Color="Color.Default" Class="mb-3">
         When on: auth and connection check (<code>pac auth who</code>) run as usual, but <strong>package deploy is skipped</strong>. Use this to avoid accidentally deploying to real environments. Connection verification confirms you are correctly connected to the target.
     </MudText>
     <MudSwitch @bind-Value="_verifyOrganizationFriendlyNameOnDeploy" Label="Additionally verify Friendly Name on deploy" Color="Color.Primary" Class="mb-2" />
-    <MudText Typo="Typo.body2" Color="Color.Secondary">
+    <MudText Typo="Typo.body2" Color="Color.Default">
         When on: pre-deploy validation will require that <code>pac auth who</code> output matches the <strong>Organization Friendly Name</strong> stored for the environment (if set). Use this when the same Service Principal has access to multiple environments to ensure deploy targets the correct one. When off, only URL/name in who output is checked.
     </MudText>
 </MudPaper>
@@ -42,7 +42,7 @@
         <MudText Typo="Typo.h6">Tool Status</MudText>
         <MudSpacer />
         <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@RefreshStatus"
-                   StartIcon="@Icons.Material.Filled.Refresh">Refresh</MudButton>
+                   StartIcon="@Icons.Material.Outlined.Refresh">Refresh</MudButton>
     </MudStack>
 
     @if (_toolStatus != null)
@@ -63,7 +63,7 @@
                         <td>
                             @if (!string.IsNullOrEmpty(tool.Path))
                             {
-                                <code style="font-size:0.85rem; word-break:break-all">@tool.Path</code>
+                                <code class="dp-text-table-aux" style="word-break:break-all">@tool.Path</code>
                             }
                             else
                             {
@@ -103,13 +103,13 @@
     <MudRadioGroup @bind-Value="_converterEngine" Class="mb-3">
         <MudRadio Value="@("BuiltIn")" Color="Color.Primary">
             <MudText><strong>Built-in Converter</strong> — no external tools required</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
+            <MudText Typo="Typo.caption" Color="Color.Default">
                 Repackages LCS modules into Unified format directly. Recommended for most scenarios.
             </MudText>
         </MudRadio>
         <MudRadio Value="@("ModelUtil")" Color="Color.Secondary">
             <MudText><strong>ModelUtil.exe</strong> — official Microsoft tool</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
+            <MudText Typo="Typo.caption" Color="Color.Default">
                 Uses ModelUtil.exe from D365 development tools. Requires Dynamics 365 SDK installed.
             </MudText>
         </MudRadio>
@@ -141,13 +141,13 @@
     <MudRadioGroup @bind-Value="_processingMode" Class="mb-3">
         <MudRadio Value="@("Local")" Color="Color.Primary">
             <MudText><strong>Local</strong> — run conversion & merge on this machine</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
+            <MudText Typo="Typo.caption" Color="Color.Default">
                 All operations run in-process. No cloud services required.
             </MudText>
         </MudRadio>
         <MudRadio Value="@("Azure")" Color="Color.Tertiary">
             <MudText><strong>Azure Functions</strong> — offload to cloud</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
+            <MudText Typo="Typo.caption" Color="Color.Default">
                 Upload packages to Azure Blob Storage and process via Azure Functions.
                 Requires Azure subscription and deployed DeployPortal.Functions app.
             </MudText>
@@ -225,11 +225,11 @@
         @(_saving ? "Saving..." : "Save Settings")
     </MudButton>
     <MudButton Variant="Variant.Outlined" OnClick="@ReloadSettings"
-               StartIcon="@Icons.Material.Filled.Refresh">
+               StartIcon="@Icons.Material.Outlined.Refresh">
         Reset to Saved
     </MudButton>
 </MudStack>
-<MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-4">
+<MudText Typo="Typo.caption" Color="Color.Default" Class="mb-4">
     Settings are stored in <code>@SettingsSvc.UserSettingsFilePath</code> and persist across app restarts and rebuilds.
 </MudText>
 
@@ -250,7 +250,7 @@
                 <td style="width:200px"><strong>.NET Runtime</strong></td>
                 <td>
                     @System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    <MudText Typo="Typo.caption" Color="Color.Default">
                         Self-contained publish bundles runtime automatically
                     </MudText>
                 </td>
@@ -259,7 +259,7 @@
                 <td><strong>ModelUtil.exe</strong></td>
                 <td>
                     <strong>Optional</strong> — only needed if "ModelUtil" converter engine is selected
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    <MudText Typo="Typo.caption" Color="Color.Default">
                         Built-in converter handles LCS → Unified conversion without ModelUtil
                     </MudText>
                 </td>
@@ -268,7 +268,7 @@
                 <td><strong>PAC CLI</strong></td>
                 <td>
                     <code>dotnet tool install --global Microsoft.PowerApps.CLI.Tool</code>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    <MudText Typo="Typo.caption" Color="Color.Default">
                         Or install via VS Code Power Platform extension
                     </MudText>
                 </td>
@@ -283,7 +283,7 @@
                 <td><strong>Settings file</strong></td>
                 <td>
                     <code>usersettings.json</code> in the application directory
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    <MudText Typo="Typo.caption" Color="Color.Default">
                         Overrides appsettings.json — portable with the application
                     </MudText>
                 </td>
@@ -339,7 +339,7 @@
                     <MudLink Href="/environments" Typo="Typo.body2"><strong>Environments</strong></MudLink>
                     and click <strong>SP Setup Guide</strong> for step-by-step instructions or an automation script.
                 </MudText>
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                <MudText Typo="Typo.caption" Color="Color.Default" Class="mt-1">
                     Requires: Global Admin or Application Admin in Entra ID
                 </MudText>
             </ItemContent>
@@ -361,7 +361,7 @@
                     <strong>Add Environment</strong> or bulk-import from the SP setup script output via
                     <strong>Import from Script</strong>.
                 </MudText>
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                <MudText Typo="Typo.caption" Color="Color.Default" Class="mt-1">
                     You'll need: Environment URL, Tenant ID, Application (Client) ID, Client Secret
                 </MudText>
             </ItemContent>
@@ -392,7 +392,7 @@
                         <strong>Other</strong> — any ZIP (e.g. ISV solutions, data packages)
                     </MudListItem>
                 </MudList>
-                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                <MudText Typo="Typo.caption" Color="Color.Default" Class="mt-1">
                     Optional: select multiple LCS or Unified packages and <strong>Merge</strong> them into one.
                     LCS packages are auto-converted to Unified format before deployment.
                 </MudText>

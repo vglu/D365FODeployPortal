@@ -59,6 +59,111 @@ h1:focus {
     text-align: start;
 }
 
+/* W3.4 (EPIC-UI-OVERLAP-FIX): screen-reader-only utility.
+   Visually hides content while keeping it in the accessibility tree.
+   Use for text that conveys state to AT users when the visual cue
+   alone (icon, color) wouldn't be announced. */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* W3.3 (EPIC-UI-OVERLAP-FIX): skip-to-content link.
+   Hidden off-screen by default; brought to top-left when focused via
+   keyboard (Tab on page load). Lets keyboard users bypass the drawer
+   nav and jump straight into the page body. */
+.skip-link {
+    position: absolute;
+    left: -9999px;
+    top: -9999px;
+    z-index: 10000;
+    padding: 8px 16px;
+    background: var(--mud-palette-primary);
+    color: var(--mud-palette-primary-text);
+    text-decoration: none;
+    border-radius: 0 0 4px 0;
+    font-weight: 600;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+    left: 0;
+    top: 0;
+    outline: 2px solid var(--mud-palette-primary-darken);
+    outline-offset: 2px;
+}
+
+/* ============================================================
+   W1.1 (EPIC-UI-OVERLAP-FIX): NavMenu — flex column inside drawer.
+   Replaces previous `position:absolute; bottom:0` footer that
+   overlapped the last nav item on short viewports. The
+   .mud-drawer-content flex container provides the height; this
+   wrapper distributes nav (top) and footer (bottom via auto margin).
+   ============================================================ */
+.nav-menu-flex {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0; /* allow MudNavMenu to shrink + scroll if too many items */
+}
+.nav-menu-flex > .mud-nav-menu {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+}
+.nav-menu-footer {
+    flex: 0 0 auto;
+    margin-top: auto; /* sticks to bottom even if nav is short */
+    padding: 12px 16px;
+    border-top: 1px solid var(--mud-palette-lines-default);
+}
+.nav-menu-footer-by {
+    opacity: 0.6;
+    font-size: var(--mud-typography-caption-size, 0.75rem);
+}
+
+/* W1.3 (EPIC-UI-OVERLAP-FIX): Master-detail expansion in tables.
+   Visual-anchor the child block to its parent row: no margin
+   leak, faint inset background, left accent bar. Replaces the
+   old `<td style="padding:0">` + `MudPaper Class="ma-2"` pattern
+   which made the detail "fall out" of the row. */
+.master-detail-row > td {
+    padding: 0;
+    background: var(--mud-palette-background-grey);
+    border-left: 3px solid var(--mud-palette-primary);
+}
+.master-detail-row .master-detail-content {
+    padding: 12px 16px;
+}
+
+/* W1.4 (EPIC-UI-OVERLAP-FIX): Code / log surface that respects theme.
+   Was previously hardcoded #1e1e1e/#ddd in DeploymentDetail.razor
+   which stayed dark in light mode. */
+.code-surface {
+    background: var(--mud-palette-background-grey);
+    color: var(--mud-palette-text-primary);
+    font-family: 'Consolas', 'Monaco', 'Ubuntu Mono', monospace;
+    font-size: 0.85rem;
+    border: 1px solid var(--mud-palette-lines-default);
+    border-radius: 4px;
+}
+.code-surface .log-ts {
+    color: var(--mud-palette-text-disabled);
+}
+.code-surface .log-tag {
+    color: var(--mud-palette-text-secondary);
+    margin: 0 8px;
+}
+.code-surface .log-line { padding: 1px 0; }
+.code-surface .log-line.log-error { color: var(--mud-palette-error); }
+.code-surface .log-line.log-warning { color: var(--mud-palette-warning-darken); }
+
 /* Packages page: drop zone */
 .packages-drop-zone {
     border: 2px dashed rgba(0, 0, 0, 0.12);

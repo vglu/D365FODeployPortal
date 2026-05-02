@@ -26,7 +26,7 @@
                OnClick="@(() => _importBackupDialogVisible = true)">
         Import backup
     </MudButton>
-    <MudButton Variant="Variant.Outlined" Color="Color.Secondary"
+    <MudButton Variant="Variant.Outlined" Color="Color.Default"
                StartIcon="@Icons.Material.Filled.ContentPaste"
                OnClick="@OpenImportDialog">
         Import from Script
@@ -44,7 +44,7 @@
     <ToolBarContent>
         <MudSpacer />
         <MudTextField @bind-Value="_searchText" Placeholder="Search..." Variant="Variant.Outlined"
-                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Outlined.Search"
                       Immediate="true" DebounceInterval="200" Margin="Margin.Dense"
                       Clearable="true" Style="max-width:280px" />
     </ToolBarContent>
@@ -62,11 +62,11 @@
     <RowTemplate>
         <MudTd DataLabel="Name">@context.Name</MudTd>
         <MudTd DataLabel="URL">
-            <span class="mud-text-secondary" style="font-size:0.85rem">@context.Url</span>
+            <span class="mud-text-secondary dp-text-table-aux">@context.Url</span>
         </MudTd>
         <MudTd DataLabel="Org Friendly Name">
             @if (!string.IsNullOrWhiteSpace(context.OrganizationFriendlyName))
-            { <span class="mud-text-secondary" style="font-size:0.85rem">@context.OrganizationFriendlyName</span> }
+            { <span class="mud-text-secondary dp-text-table-aux">@context.OrganizationFriendlyName</span> }
             else
             { <span class="mud-text-disabled">—</span> }
         </MudTd>
@@ -74,7 +74,7 @@
             @if (context.HasServicePrincipal)
             { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary">SP</MudChip> }
             else
-            { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary">Interactive</MudChip> }
+            { <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">Interactive</MudChip> }
         </MudTd>
         <MudTd DataLabel="Tenant">@TruncateGuid(context.TenantId)</MudTd>
         <MudTd DataLabel="AppId">@TruncateGuid(context.ApplicationId)</MudTd>
@@ -84,7 +84,7 @@
                        ValueChanged="@(async _ => await ToggleActive(context))" />
         </MudTd>
         <MudTd>
-            <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+            <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small"
                            OnClick="@(() => OpenEditDialog(context))" />
             <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                            OnClick="@(() => DeleteEnvironment(context))" />
@@ -98,8 +98,8 @@
         <MudText Typo="Typo.h6">@(_editingId.HasValue ? "Edit" : "Add") Environment</MudText>
     </TitleContent>
     <DialogContent>
-        <MudSwitch @bind-Value="_formUseInteractive" Label="Extended: Interactive sign-in (no Service Principal)" Color="Color.Secondary" Class="mb-2" />
-        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3" Style="display:block">
+        <MudSwitch @bind-Value="_formUseInteractive" Label="Extended: Interactive sign-in (no Service Principal)" Color="Color.Default" Class="mb-2" />
+        <MudText Typo="Typo.caption" Color="Color.Default" Class="mb-3" Style="display:block">
             When on: only Name and URL required. At deploy time you open a link from the log and enter a code to sign in.
         </MudText>
         <MudTextField @bind-Value="_formName" Label="Name" Required="true" Class="mb-3" />
@@ -125,16 +125,16 @@
                           Style="flex: 1;" />
             @if (_editingId.HasValue)
             {
-                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" Class="ms-2"
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" Class="ms-2"
                            OnClick="@PullFriendlyName" Disabled="@_pullFriendlyNameLoading"
-                           StartIcon="@Icons.Material.Filled.Refresh">
+                           StartIcon="@Icons.Material.Outlined.Refresh">
                     @(_pullFriendlyNameLoading ? "Pulling..." : "Pull Friendly Name")
                 </MudButton>
             }
         </MudStack>
         @if (_editingId.HasValue)
         {
-            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-3">
+            <MudText Typo="Typo.caption" Color="Color.Default" Class="mb-3">
                 Pull Friendly Name: fetches from current environment via pac auth who (Service Principal required).
             </MudText>
         }
@@ -149,7 +149,7 @@
 <MudDialog @bind-Visible="_importDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true }">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudIcon Icon="@Icons.Material.Filled.ContentPaste" Color="Color.Secondary" />
+            <MudIcon Icon="@Icons.Material.Filled.ContentPaste" Color="Color.Info" />
             <MudText Typo="Typo.h6">Import from Script Output</MudText>
         </MudStack>
     </TitleContent>
@@ -164,7 +164,7 @@
             <MudTextField @bind-Value="_importText" Label="Paste script output here"
                           Variant="Variant.Outlined" Lines="10"
                           Placeholder="Application (Client) ID:  xxxxxxxx-xxxx-...&#10;Directory (Tenant) ID:    xxxxxxxx-xxxx-...&#10;Client Secret:            xxxxxxxxxx...&#10;Environments (OK):        env1.crm.dynamics.com, env2.crm.dynamics.com"
-                          Class="mb-3" Style="font-family:monospace; font-size:0.85rem" />
+                          Class="mb-3 dp-font-mono dp-text-table-aux" />
 
             <MudStack Row="true" Spacing="2" AlignItems="AlignItems.Center">
                 <MudFileUpload T="IBrowserFile" FilesChanged="@OnImportFileSelected" Accept=".txt,.log,.md">
@@ -176,7 +176,7 @@
                     </ActivatorContent>
                 </MudFileUpload>
                 <MudSpacer />
-                <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="@ParseImportData"
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@ParseImportData"
                            Disabled="@string.IsNullOrWhiteSpace(_importText)"
                            StartIcon="@Icons.Material.Filled.AutoFixHigh">
                     Parse
@@ -261,12 +261,12 @@
                             {
                                 <MudCheckBox T="bool" Value="@_selectedUpdateEnvs.Contains(env)"
                                              ValueChanged="@(v => ToggleImportEnvUpdate(env, v))"
-                                             Dense="true" Color="Color.Secondary" />
+                                             Dense="true" Color="Color.Default" />
                                 <MudText Typo="Typo.body2">@env</MudText>
                                 <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">exists</MudChip>
                                 @if (_selectedUpdateEnvs.Contains(env))
                                 {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Text">update credentials</MudChip>
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">update credentials</MudChip>
                                 }
                             }
                             else
@@ -357,7 +357,7 @@
 <MudDialog @bind-Visible="_importBackupDialogVisible" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudIcon Icon="@Icons.Material.Filled.Upload" Color="Color.Secondary" />
+            <MudIcon Icon="@Icons.Material.Filled.Upload" Color="Color.Info" />
             <MudText Typo="Typo.h6">Import from backup</MudText>
         </MudStack>
     </TitleContent>
@@ -465,7 +465,7 @@
                                 <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small"><strong>+ New app user</strong> &rarr; <strong>+ Add an app</strong> &rarr; select your app (e.g. <code>PAC-Deploy-Automation</code> by Application ID)</MudListItem>
                                 <MudListItem Icon="@Icons.Material.Filled.ChevronRight" IconSize="Size.Small">Choose <strong>Business unit</strong>, assign role <strong>System Administrator</strong> (or equivalent for deploy), then <strong>Save</strong></MudListItem>
                             </MudList>
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Repeat for every environment that will use this Service Principal. One SP can be added to multiple environments.</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Default">Repeat for every environment that will use this Service Principal. One SP can be added to multiple environments.</MudText>
                         </ItemContent>
                     </MudTimelineItem>
 
@@ -482,7 +482,7 @@
 
                 <MudDivider Class="my-3" />
                 <MudText Typo="Typo.subtitle2" Class="mb-2">Verification command (use <code>--name</code> for an isolated profile; required if running parallel deploys):</MudText>
-                <MudPaper Class="pa-3" Elevation="0" Style="background:var(--mud-palette-background-gray); font-family:monospace; font-size:0.85rem; white-space:pre-wrap; overflow-x:auto">pac auth create --name "Deploy_MyEnv" --applicationId "&lt;APP_ID&gt;" --clientSecret "&lt;SECRET&gt;" --tenant "&lt;TENANT_ID&gt;" --environment "&lt;ENV_URL&gt;" --accept-cleartext-caching
+                <MudPaper Class="pa-3 code-block" Elevation="0">pac auth create --name "Deploy_MyEnv" --applicationId "&lt;APP_ID&gt;" --clientSecret "&lt;SECRET&gt;" --tenant "&lt;TENANT_ID&gt;" --environment "&lt;ENV_URL&gt;" --accept-cleartext-caching
 pac auth who</MudPaper>
             </MudTabPanel>
 
@@ -498,7 +498,7 @@ pac auth who</MudPaper>
                 </MudAlert>
 
                 <MudText Typo="Typo.subtitle2" Class="mb-2">Usage examples:</MudText>
-                <MudPaper Class="pa-3 mb-3" Elevation="0" Style="background:var(--mud-palette-background-gray); font-family:monospace; font-size:0.82rem; white-space:pre-wrap; overflow-x:auto"># Full setup — creates SP and registers in specified environments
+                <MudPaper Class="pa-3 mb-3 code-block" Elevation="0"># Full setup — creates SP and registers in specified environments
 .\Setup-ServicePrincipal.ps1 -Environments "env1.crm.dynamics.com","env2.crm.dynamics.com"
 
 # Add a new environment to an existing SP
@@ -508,7 +508,7 @@ pac auth who</MudPaper>
 .\Setup-ServicePrincipal.ps1 -AddEnvironment "env-a.crm.dynamics.com","env-b.crm.dynamics.com"</MudPaper>
 
                 <MudText Typo="Typo.subtitle2" Class="mb-2">Full script:</MudText>
-                <MudPaper Class="pa-3" Elevation="0" Style="background:var(--mud-palette-background-gray); font-family:monospace; font-size:0.78rem; white-space:pre-wrap; overflow-x:auto; max-height:400px; overflow-y:auto">@_setupScript</MudPaper>
+                <MudPaper Class="pa-3 code-block" Elevation="0" Style="max-height:400px; overflow-y:auto">@_setupScript</MudPaper>
 
                 <MudStack Row="true" Class="mt-3" Spacing="2">
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
@@ -516,7 +516,7 @@ pac auth who</MudPaper>
                                OnClick="@CopyScriptToClipboard">
                         Copy Script
                     </MudButton>
-                    <MudText Typo="Typo.caption" Class="align-self-center" Color="Color.Tertiary">
+                    <MudText Typo="Typo.caption" Class="align-self-center" Color="Color.Info">
                         Save as <code>Setup-ServicePrincipal.ps1</code> and run in PowerShell
                     </MudText>
                 </MudStack>
