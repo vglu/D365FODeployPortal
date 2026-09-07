@@ -29,8 +29,27 @@ Write-Host ('Runtime:    ' + $Runtime) -ForegroundColor White
 Write-Host ('SingleFile: ' + $SingleFile) -ForegroundColor White
 Write-Host ''
 
-# Clean previous output
+# Preserve runtime state across publish (DB + Data Protection keys).
+# Deleting these causes antiforgery decrypt errors and broken Client Secret decryption.
+$preserveItems = @(
+    'deploy-portal.db',
+    'deploy-portal.db-shm',
+    'deploy-portal.db-wal',
+    'DataProtection-Keys'
+)
+$preserveRoot = Join-Path $env:TEMP ("DeployPortal_publish_preserve_" + [guid]::NewGuid().ToString('N'))
+$preserved = @()
 if (Test-Path $OutputDir) {
+    New-Item -ItemType Directory -Force -Path $preserveRoot | Out-Null
+    foreach ($name in $preserveItems) {
+        $src = Join-Path $OutputDir $name
+        if (Test-Path $src) {
+            $dest = Join-Path $preserveRoot $name
+            Copy-Item $src $dest -Recurse -Force
+            $preserved += $name
+            Write-Host ('Preserving: ' + $name) -ForegroundColor Yellow
+        }
+    }
     Write-Host 'Cleaning previous publish...' -ForegroundColor Yellow
     Remove-Item $OutputDir -Recurse -Force
 }
@@ -62,6 +81,20 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host ''
     Write-Host 'PUBLISH FAILED!' -ForegroundColor Red
     exit 1
+}
+
+# Restore preserved DB / Data Protection keys into the new publish output
+if ($preserved.Count -gt 0 -and (Test-Path $preserveRoot)) {
+    foreach ($name in $preserved) {
+        $src = Join-Path $preserveRoot $name
+        $dest = Join-Path $OutputDir $name
+        if (Test-Path $src) {
+            if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+            Copy-Item $src $dest -Recurse -Force
+            Write-Host ('Restored: ' + $name) -ForegroundColor Green
+        }
+    }
+    Remove-Item $preserveRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # Copy helper files (including prerequisites script so it can be run from publish folder)

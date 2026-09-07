@@ -17,7 +17,12 @@ public static class PackageDeployFailureDetector
         "Selected Plugin is null",
         "PackageDeployVerb Error",
         "Package deployment failed",
-        "The installation of the package failed"
+        "The installation of the package failed",
+        "Failed to parse package",
+        "ExternalOrchestration",
+        "Mismatched to Finance and Operations Application Host",
+        "Finance and Operations module validation failure",
+        "Configuration Read Failed"
     ];
 
     /// <summary>

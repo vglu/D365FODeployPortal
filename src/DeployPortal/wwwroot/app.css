@@ -209,9 +209,7 @@ h1:focus {
 .code-surface .log-line.log-error { color: var(--mud-palette-error); }
 .code-surface .log-line.log-warning { color: var(--mud-palette-warning-darken); }
 
-/* Packages table: keep Actions visible when Name/File are wide.
-   Sticky right column + ellipsis on long cells so Download / Tools
-   cannot scroll off-screen or get squeezed to zero width. */
+/* Packages table: long Name/File truncate; Actions stay compact on the right. */
 .dp-packages-table .mud-table-container {
     overflow-x: auto;
 }
@@ -220,24 +218,38 @@ h1:focus {
     position: sticky;
     right: 0;
     z-index: 3;
-    min-width: 200px;
-    width: 200px;
+    width: 120px;
+    min-width: 120px;
+    max-width: 120px;
     white-space: nowrap;
+    text-align: right;
     background: var(--mud-palette-surface);
-    box-shadow: -6px 0 8px -6px rgba(0, 0, 0, 0.18);
+    box-shadow: -4px 0 6px -4px rgba(0, 0, 0, 0.12);
 }
 .dp-packages-table thead th.dp-col-actions {
     z-index: 4;
-    background: var(--mud-palette-surface);
 }
 .dp-packages-table .dp-col-truncate {
-    max-width: 240px;
+    display: inline-block;
+    max-width: 220px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    vertical-align: bottom;
 }
 .dp-packages-table .dp-col-file {
-    max-width: 280px;
+    max-width: 260px;
+}
+.dp-packages-table th.dp-col-uploaded,
+.dp-packages-table td.dp-col-uploaded {
+    white-space: nowrap;
+    min-width: 96px;
+}
+.dp-packages-table th.dp-col-license,
+.dp-packages-table td.dp-col-license {
+    width: 40px;
+    min-width: 40px;
+    text-align: center;
 }
 
 /* Packages page: drop zone.

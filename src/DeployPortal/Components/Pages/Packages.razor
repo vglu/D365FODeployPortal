@@ -90,8 +90,8 @@
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.OriginalFileName)">File</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.PackageType)">Type</MudTableSortLabel></MudTh>
         <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.FileSizeBytes)">Size</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortBy="new Func<Package, object>(p => p.UploadedAt)" InitialDirection="SortDirection.Descending">Uploaded</MudTableSortLabel></MudTh>
-        <MudTh Style="width:44px">
+        <MudTh Class="dp-col-uploaded"><MudTableSortLabel SortBy="new Func<Package, object>(p => p.UploadedAt)" InitialDirection="SortDirection.Descending">Uploaded</MudTableSortLabel></MudTh>
+        <MudTh Class="dp-col-license">
             <MudTooltip Text="License Files"><MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" /></MudTooltip>
         </MudTh>
         <MudTh Class="dp-col-actions">Actions</MudTh>
@@ -122,12 +122,12 @@
             </MudChip>
         </MudTd>
         <MudTd DataLabel="Size">@FormatSize(context.FileSizeBytes)</MudTd>
-        <MudTd DataLabel="Uploaded">
+        <MudTd DataLabel="Uploaded" Class="dp-col-uploaded">
             <MudTooltip Text="@context.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")">
                 <span>@context.UploadedAt.ToLocalTime().ToString("MM-dd HH:mm")</span>
             </MudTooltip>
         </MudTd>
-        <MudTd Style="text-align:center">
+        <MudTd DataLabel="License" Class="dp-col-license">
             @if (HasLicenseFiles(context))
             {
                 <MudTooltip Text="@GetLicenseTooltip(context)">
@@ -136,20 +136,18 @@
             }
         </MudTd>
         <MudTd DataLabel="Actions" Class="dp-col-actions">
-            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
-                           StartIcon="@Icons.Material.Filled.FolderOpen"
-                           Href="@($"/packages/{context.Id}/details")">
-                    Properties
-                </MudButton>
-                <MudMenu Label="Tools" Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
-                         Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
-                         EndIcon="@Icons.Material.Filled.ArrowDropDown">
-                    <MudMenuItem Icon="@Icons.Material.Filled.Download"
-                                 OnClick="@(() => DownloadPackage(context))">
-                        Download
-                    </MudMenuItem>
-                    <MudDivider />
+            <MudStack Row="true" Spacing="0" Justify="Justify.FlexEnd">
+                <MudTooltip Text="Properties">
+                    <MudIconButton Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" Color="Color.Primary"
+                                   Href="@($"/packages/{context.Id}/details")" />
+                </MudTooltip>
+                <MudTooltip Text="Download">
+                    <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Default"
+                                   OnClick="@(() => DownloadPackage(context))" />
+                </MudTooltip>
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true"
+                         AriaLabel="Tools"
+                         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                     @if (context.PackageType == "LCS" || context.PackageType == "Merged")
                     {
                         <MudMenuItem Icon="@Icons.Material.Filled.Transform"

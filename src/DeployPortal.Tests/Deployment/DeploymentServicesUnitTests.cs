@@ -492,6 +492,7 @@ Organization Friendly Name: Example-Target-Env"
     {
         var packagePath = CreateUnifiedPackageLayout(_testDir);
         string? capturedCwd = null;
+        string? capturedArgs = null;
 
         var pac = new Mock<IPacCliExecutor>();
         pac.Setup(p => p.ExecuteAsync(
@@ -501,7 +502,11 @@ Organization Friendly Name: Example-Target-Env"
                 It.IsAny<Action<string>?>(),
                 It.IsAny<Action<string>?>()))
             .Callback<string, string, IDictionary<string, string>?, Action<string>?, Action<string>?>(
-                (_, cwd, _, _, _) => capturedCwd = cwd)
+                (args, cwd, _, _, _) =>
+                {
+                    capturedArgs = args;
+                    capturedCwd = cwd;
+                })
             .ReturnsAsync(new PacCliResult
             {
                 ExitCode = 0,
@@ -516,6 +521,19 @@ Organization Friendly Name: Example-Target-Env"
             await service.DeployAsync(packagePath, Path.Combine(_testDir, "d.log"), _testDir));
 
         Assert.That(capturedCwd, Is.EqualTo(_testDir));
+        Assert.That(capturedArgs, Does.Contain("package deploy"));
+        Assert.That(capturedArgs, Does.Contain("--verbose"));
+        Assert.That(capturedArgs, Does.Contain("pac_deploy_").And.Contain(".zip"));
+        Assert.That(capturedArgs, Does.Not.Contain("TemplatePackage.dll"));
+    }
+
+    [Test]
+    public void PackageDeployFailureDetector_FindFailureEvidence_DetectsExternalOrchestration()
+    {
+        var text = "Request cannot be accepted on the host environment with state: ExternalOrchestration";
+        var evidence = PackageDeployFailureDetector.FindFailureEvidence(text);
+        Assert.That(evidence, Is.Not.Null);
+        Assert.That(evidence, Does.Contain("ExternalOrchestration"));
     }
 
     [Test]

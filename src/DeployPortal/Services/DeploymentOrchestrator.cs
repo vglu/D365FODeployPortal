@@ -265,10 +265,19 @@ public class DeploymentOrchestrator : BackgroundService
         }
         finally
         {
-            // Always remove temporary deploy directory (success or failure)
+            // Keep failed deploy folders for debugging (Config File Missing, FO host issues).
+            // Successful runs still clean up.
+            var keepOnFailure = deployment.Status == DeploymentStatus.Failed;
             if (!string.IsNullOrEmpty(deployDir) && Directory.Exists(deployDir))
             {
-                try { Directory.Delete(deployDir, true); } catch { /* ignore */ }
+                if (keepOnFailure)
+                {
+                    Log($"[Debug] Keeping deploy folder for inspection: {deployDir}");
+                }
+                else
+                {
+                    try { Directory.Delete(deployDir, true); } catch { /* ignore */ }
+                }
             }
         }
 

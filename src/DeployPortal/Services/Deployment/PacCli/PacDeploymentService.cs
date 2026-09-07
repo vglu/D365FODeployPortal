@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using DeployPortal.Services.Deployment.Validation;
 
 namespace DeployPortal.Services.Deployment.PacCli;
@@ -34,13 +35,11 @@ public class PacDeploymentService : IPacDeploymentService
             throw new FileNotFoundException($"Package not found: {packagePath}", packagePath);
         }
 
-        // Package Deployer resolves ImportConfig.xml via GetImportPackageDataFolderName
-        // (PackageAssets) relative to the process working directory / package location.
-        // Running PAC from ModelUtil/app dir causes "Config File Missing".
         var packageDir = Path.GetDirectoryName(packagePath)
             ?? throw new InvalidOperationException($"Cannot resolve directory for package: {packagePath}");
 
-        var importConfigPath = Path.Combine(packageDir, "PackageAssets", "ImportConfig.xml");
+        var assetsDir = Path.Combine(packageDir, "PackageAssets");
+        var importConfigPath = Path.Combine(assetsDir, "ImportConfig.xml");
         if (!File.Exists(importConfigPath))
         {
             throw new FileNotFoundException(
@@ -50,43 +49,77 @@ public class PacDeploymentService : IPacDeploymentService
                 importConfigPath);
         }
 
-        _logger.LogInformation("Deploying package: {Package} (cwd: {Cwd})", packagePath, packageDir);
+        var assetCount = Directory.Exists(assetsDir)
+            ? Directory.GetFiles(assetsDir).Length
+            : 0;
         onLog?.Invoke($"Package: {packagePath}");
-        onLog?.Invoke($"Working directory: {packageDir}");
+        onLog?.Invoke($"PackageAssets: {assetCount} file(s), ImportConfig present.");
 
-        var envVars = new Dictionary<string, string>
+        // PAC may load a bare TemplatePackage.dll without its sibling PackageAssets folder
+        // (Config File Missing). Deploying a zip keeps DLL + PackageAssets together; PAC
+        // extracts them to a temp folder (e.g. %TEMP%\xxxx.CPY\PackageAssets\ImportConfig.xml).
+        // Zip must be created OUTSIDE packageDir (CreateFromDirectory cannot write into itself).
+        var deployZipPath = Path.Combine(
+            Path.GetTempPath(),
+            $"pac_deploy_{Guid.NewGuid():N}.zip");
+        onLog?.Invoke($"Packaging Unified folder for PAC: {Path.GetFileName(deployZipPath)}");
+        if (File.Exists(deployZipPath))
+            File.Delete(deployZipPath);
+        ZipFile.CreateFromDirectory(packageDir, deployZipPath, CompressionLevel.Fastest, includeBaseDirectory: false);
+
+        try
         {
-            ["PAC_AUTH_PROFILE_DIRECTORY"] = isolatedAuthDir
-        };
+            _logger.LogInformation(
+                "Deploying package zip: {Zip} (from {Dir})",
+                deployZipPath,
+                packageDir);
 
-        var arguments = $"package deploy --logConsole --package \"{packagePath}\" --logFile \"{logFilePath}\"";
+            var envVars = new Dictionary<string, string>
+            {
+                ["PAC_AUTH_PROFILE_DIRECTORY"] = isolatedAuthDir
+            };
 
-        var result = await _pacExecutor.ExecuteAsync(
-            arguments,
-            packageDir,
-            envVars,
-            onOutput: onLog,
-            onError: line => onLog?.Invoke($"[ERROR] {line}"));
+            var arguments =
+                $"package deploy --logConsole --verbose --package \"{deployZipPath}\" --logFile \"{logFilePath}\"";
 
-        if (!result.IsSuccess)
-        {
-            throw new InvalidOperationException(
-                $"PAC package deployment failed with exit code {result.ExitCode}. " +
-                $"Error: {result.StandardError}");
+            var result = await _pacExecutor.ExecuteAsync(
+                arguments,
+                packageDir,
+                envVars,
+                onOutput: onLog,
+                onError: line => onLog?.Invoke($"[ERROR] {line}"));
+
+            if (!result.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"PAC package deployment failed with exit code {result.ExitCode}. " +
+                    $"Error: {result.StandardError}");
+            }
+
+            var combinedOutput = $"{result.StandardOutput}\n{result.StandardError}";
+            var failureEvidence = PackageDeployFailureDetector.FindFailureEvidence(combinedOutput);
+            if (failureEvidence != null)
+            {
+                _logger.LogError(
+                    "PAC exited 0 but install failure detected in output: {Evidence}",
+                    failureEvidence);
+                throw new InvalidOperationException(
+                    $"PAC package deployment reported failure despite exit code 0. {failureEvidence}");
+            }
+
+            _logger.LogInformation("Package deployment completed successfully");
         }
-
-        // PAC can exit 0 while still printing install / config failures on stdout/stderr.
-        var combinedOutput = $"{result.StandardOutput}\n{result.StandardError}";
-        var failureEvidence = PackageDeployFailureDetector.FindFailureEvidence(combinedOutput);
-        if (failureEvidence != null)
+        finally
         {
-            _logger.LogError(
-                "PAC exited 0 but install failure detected in output: {Evidence}",
-                failureEvidence);
-            throw new InvalidOperationException(
-                $"PAC package deployment reported failure despite exit code 0. {failureEvidence}");
+            try
+            {
+                if (File.Exists(deployZipPath))
+                    File.Delete(deployZipPath);
+            }
+            catch
+            {
+                /* ignore */
+            }
         }
-
-        _logger.LogInformation("Package deployment completed successfully");
     }
 }
