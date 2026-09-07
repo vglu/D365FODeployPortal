@@ -6,12 +6,16 @@ namespace DeployPortal.Services.Deployment.Validation;
 public static class PackageDeployFailureDetector
 {
     // Explicit failure markers observed in PAC / PackageDeployer output.
-    // Keep specific to avoid false positives on warnings or unrelated "Error:" noise.
+    // Keep specific enough to avoid false positives on unrelated warnings.
     private static readonly string[] FailureMarkers =
     [
         "RaiseFailEvent",
         "Installation failed for Finance and Operations",
         "Error: Installation failed",
+        "Failed to Load the Import Configuration",
+        "Config File Missing",
+        "Selected Plugin is null",
+        "PackageDeployVerb Error",
         "Package deployment failed",
         "The installation of the package failed"
     ];
@@ -26,10 +30,19 @@ public static class PackageDeployFailureDetector
 
         foreach (var line in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
         {
+            var trimmed = line.Trim();
+
+            // PAC CLI summary lines: "Error: <message>"
+            if (trimmed.StartsWith("Error:", StringComparison.OrdinalIgnoreCase)
+                && trimmed.Length > "Error:".Length)
+            {
+                return trimmed;
+            }
+
             foreach (var marker in FailureMarkers)
             {
-                if (line.Contains(marker, StringComparison.OrdinalIgnoreCase))
-                    return line.Trim();
+                if (trimmed.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                    return trimmed;
             }
         }
 

@@ -9,16 +9,13 @@ namespace DeployPortal.Services.Deployment.PacCli;
 public class PacDeploymentService : IPacDeploymentService
 {
     private readonly IPacCliExecutor _pacExecutor;
-    private readonly ISettingsService _settings;
     private readonly ILogger<PacDeploymentService> _logger;
 
     public PacDeploymentService(
         IPacCliExecutor pacExecutor,
-        ISettingsService settings,
         ILogger<PacDeploymentService> logger)
     {
         _pacExecutor = pacExecutor ?? throw new ArgumentNullException(nameof(pacExecutor));
-        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -37,8 +34,25 @@ public class PacDeploymentService : IPacDeploymentService
             throw new FileNotFoundException($"Package not found: {packagePath}", packagePath);
         }
 
-        _logger.LogInformation("Deploying package: {Package}", packagePath);
+        // Package Deployer resolves ImportConfig.xml via GetImportPackageDataFolderName
+        // (PackageAssets) relative to the process working directory / package location.
+        // Running PAC from ModelUtil/app dir causes "Config File Missing".
+        var packageDir = Path.GetDirectoryName(packagePath)
+            ?? throw new InvalidOperationException($"Cannot resolve directory for package: {packagePath}");
+
+        var importConfigPath = Path.Combine(packageDir, "PackageAssets", "ImportConfig.xml");
+        if (!File.Exists(importConfigPath))
+        {
+            throw new FileNotFoundException(
+                "ImportConfig.xml not found next to TemplatePackage.dll. " +
+                "Expected PackageAssets/ImportConfig.xml in the Unified package output. " +
+                $"Looked for: {importConfigPath}",
+                importConfigPath);
+        }
+
+        _logger.LogInformation("Deploying package: {Package} (cwd: {Cwd})", packagePath, packageDir);
         onLog?.Invoke($"Package: {packagePath}");
+        onLog?.Invoke($"Working directory: {packageDir}");
 
         var envVars = new Dictionary<string, string>
         {
@@ -46,11 +60,10 @@ public class PacDeploymentService : IPacDeploymentService
         };
 
         var arguments = $"package deploy --logConsole --package \"{packagePath}\" --logFile \"{logFilePath}\"";
-        var workingDir = GetWorkingDirectory();
 
         var result = await _pacExecutor.ExecuteAsync(
             arguments,
-            workingDir,
+            packageDir,
             envVars,
             onOutput: onLog,
             onError: line => onLog?.Invoke($"[ERROR] {line}"));
@@ -62,7 +75,7 @@ public class PacDeploymentService : IPacDeploymentService
                 $"Error: {result.StandardError}");
         }
 
-        // PAC can exit 0 while still printing FO install failure on stdout/stderr.
+        // PAC can exit 0 while still printing install / config failures on stdout/stderr.
         var combinedOutput = $"{result.StandardOutput}\n{result.StandardError}";
         var failureEvidence = PackageDeployFailureDetector.FindFailureEvidence(combinedOutput);
         if (failureEvidence != null)
@@ -75,13 +88,5 @@ public class PacDeploymentService : IPacDeploymentService
         }
 
         _logger.LogInformation("Package deployment completed successfully");
-    }
-
-    private string GetWorkingDirectory()
-    {
-        var path = _settings.GetEffectiveModelUtilPath();
-        return !string.IsNullOrEmpty(path)
-            ? Path.GetDirectoryName(path)!
-            : AppContext.BaseDirectory;
     }
 }

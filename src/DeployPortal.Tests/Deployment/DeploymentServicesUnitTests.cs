@@ -312,9 +312,8 @@ Organization Friendly Name: Example-Target-Env"
     }
 
     [Test]
-    public async Task PostDeployLogValidator_ValidateAsync_DoesNotThrow_WhenOrganizationUriNotFoundInLog()
+    public void PostDeployLogValidator_ValidateAsync_Throws_WhenOrganizationUriNotFoundInLog()
     {
-        // Arrange
         var logger = new Mock<ILogger<PostDeployLogValidator>>();
         var validator = new PostDeployLogValidator(logger.Object);
         var logPath = Path.Combine(_testDir, "deploy.log");
@@ -322,19 +321,19 @@ Organization Friendly Name: Example-Target-Env"
 
         var context = new DeploymentContext
         {
-            Environment = new Models.Environment 
-            { 
-                Name = "Test", 
-                Url = "test-env.crm.dynamics.com" 
+            Environment = new Models.Environment
+            {
+                Name = "Test",
+                Url = "test-env.crm.dynamics.com"
             },
             IsolatedAuthDir = _testDir,
             LogFilePath = logPath,
             PackagePath = Path.Combine(_testDir, "TemplatePackage.dll")
         };
 
-        // Act & Assert (should not throw — just log warning)
-        Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
-        await Task.CompletedTask;
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await validator.ValidateAsync(context));
+        Assert.That(ex!.Message, Does.Contain("Organization Uri"));
     }
 
     [Test]
@@ -392,6 +391,33 @@ Organization Friendly Name: Example-Target-Env"
         Assert.That(ex!.Message, Does.Contain("Installation failed for Finance and Operations"));
     }
 
+    [Test]
+    public void PostDeployLogValidator_ValidateAsync_Throws_WhenLogContainsConfigFileMissing()
+    {
+        var logger = new Mock<ILogger<PostDeployLogValidator>>();
+        var validator = new PostDeployLogValidator(logger.Object);
+        var logPath = Path.Combine(_testDir, "deploy-config-missing.log");
+        File.WriteAllText(logPath,
+            "Failed to Load the Import Configuration : Config File Missing\n" +
+            "PackageDeployVerb Error: 2 : Message: Selected Plugin is null");
+
+        var context = new DeploymentContext
+        {
+            Environment = new Models.Environment
+            {
+                Name = "Test",
+                Url = "test-env.crm.dynamics.com"
+            },
+            IsolatedAuthDir = _testDir,
+            LogFilePath = logPath,
+            PackagePath = Path.Combine(_testDir, "TemplatePackage.dll")
+        };
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await validator.ValidateAsync(context));
+        Assert.That(ex!.Message, Does.Contain("Config File Missing").Or.Contain("Failed to Load the Import Configuration").Or.Contain("Selected Plugin is null"));
+    }
+
     #endregion
 
     #region PackageDeployFailureDetector Tests
@@ -419,15 +445,83 @@ Organization Friendly Name: Example-Target-Env"
         Assert.That(PackageDeployFailureDetector.HasFailure(text), Is.True);
     }
 
+    [Test]
+    public void PackageDeployFailureDetector_FindFailureEvidence_DetectsConfigFileMissing()
+    {
+        var text = "Error: Failed to Load the Import Configuration : Config File Missing";
+        var evidence = PackageDeployFailureDetector.FindFailureEvidence(text);
+        Assert.That(evidence, Is.Not.Null);
+        Assert.That(evidence, Does.Contain("Config File Missing").Or.Contain("Failed to Load"));
+    }
+
     #endregion
 
     #region PacDeploymentService Tests
 
+    private static string CreateUnifiedPackageLayout(string root)
+    {
+        var packagePath = Path.Combine(root, "TemplatePackage.dll");
+        File.WriteAllText(packagePath, "dll");
+        var assets = Path.Combine(root, "PackageAssets");
+        Directory.CreateDirectory(assets);
+        File.WriteAllText(Path.Combine(assets, "ImportConfig.xml"), "<configdatastorage/>");
+        return packagePath;
+    }
+
     [Test]
-    public void PacDeploymentService_DeployAsync_Throws_WhenPacExitsZeroButStdoutHasFoFailure()
+    public void PacDeploymentService_DeployAsync_Throws_WhenImportConfigMissing()
     {
         var packagePath = Path.Combine(_testDir, "TemplatePackage.dll");
         File.WriteAllText(packagePath, "dll");
+
+        var pac = new Mock<IPacCliExecutor>();
+        var logger = new Mock<ILogger<PacDeploymentService>>();
+        var service = new PacDeploymentService(pac.Object, logger.Object);
+
+        var ex = Assert.ThrowsAsync<FileNotFoundException>(async () =>
+            await service.DeployAsync(packagePath, Path.Combine(_testDir, "d.log"), _testDir));
+
+        Assert.That(ex!.Message, Does.Contain("ImportConfig.xml"));
+        pac.Verify(p => p.ExecuteAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IDictionary<string, string>?>(),
+            It.IsAny<Action<string>?>(), It.IsAny<Action<string>?>()), Times.Never);
+    }
+
+    [Test]
+    public void PacDeploymentService_DeployAsync_UsesPackageDirectoryAsWorkingDir()
+    {
+        var packagePath = CreateUnifiedPackageLayout(_testDir);
+        string? capturedCwd = null;
+
+        var pac = new Mock<IPacCliExecutor>();
+        pac.Setup(p => p.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<IDictionary<string, string>?>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<string>?>()))
+            .Callback<string, string, IDictionary<string, string>?, Action<string>?, Action<string>?>(
+                (_, cwd, _, _, _) => capturedCwd = cwd)
+            .ReturnsAsync(new PacCliResult
+            {
+                ExitCode = 0,
+                StandardOutput = "Package deployed successfully\n",
+                StandardError = ""
+            });
+
+        var logger = new Mock<ILogger<PacDeploymentService>>();
+        var service = new PacDeploymentService(pac.Object, logger.Object);
+
+        Assert.DoesNotThrowAsync(async () =>
+            await service.DeployAsync(packagePath, Path.Combine(_testDir, "d.log"), _testDir));
+
+        Assert.That(capturedCwd, Is.EqualTo(_testDir));
+    }
+
+    [Test]
+    public void PacDeploymentService_DeployAsync_Throws_WhenPacExitsZeroButStdoutHasFoFailure()
+    {
+        var packagePath = CreateUnifiedPackageLayout(_testDir);
 
         var pac = new Mock<IPacCliExecutor>();
         pac.Setup(p => p.ExecuteAsync(
@@ -443,10 +537,8 @@ Organization Friendly Name: Example-Target-Env"
                 StandardError = ""
             });
 
-        var settings = new Mock<ISettingsService>();
-        settings.Setup(s => s.GetEffectiveModelUtilPath()).Returns(_testDir);
         var logger = new Mock<ILogger<PacDeploymentService>>();
-        var service = new PacDeploymentService(pac.Object, settings.Object, logger.Object);
+        var service = new PacDeploymentService(pac.Object, logger.Object);
 
         var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
             await service.DeployAsync(packagePath, Path.Combine(_testDir, "d.log"), _testDir));
@@ -456,10 +548,37 @@ Organization Friendly Name: Example-Target-Env"
     }
 
     [Test]
+    public void PacDeploymentService_DeployAsync_Throws_WhenPacExitsZeroButStdoutHasConfigMissing()
+    {
+        var packagePath = CreateUnifiedPackageLayout(_testDir);
+
+        var pac = new Mock<IPacCliExecutor>();
+        pac.Setup(p => p.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<IDictionary<string, string>?>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<string>?>()))
+            .ReturnsAsync(new PacCliResult
+            {
+                ExitCode = 0,
+                StandardOutput = "Error: Failed to Load the Import Configuration : Config File Missing\n",
+                StandardError = ""
+            });
+
+        var logger = new Mock<ILogger<PacDeploymentService>>();
+        var service = new PacDeploymentService(pac.Object, logger.Object);
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await service.DeployAsync(packagePath, Path.Combine(_testDir, "d.log"), _testDir));
+
+        Assert.That(ex!.Message, Does.Contain("Config File Missing").Or.Contain("Failed to Load"));
+    }
+
+    [Test]
     public async Task PacDeploymentService_DeployAsync_Succeeds_WhenPacExitsZeroAndOutputIsClean()
     {
-        var packagePath = Path.Combine(_testDir, "TemplatePackage.dll");
-        File.WriteAllText(packagePath, "dll");
+        var packagePath = CreateUnifiedPackageLayout(_testDir);
 
         var pac = new Mock<IPacCliExecutor>();
         pac.Setup(p => p.ExecuteAsync(
@@ -475,10 +594,8 @@ Organization Friendly Name: Example-Target-Env"
                 StandardError = ""
             });
 
-        var settings = new Mock<ISettingsService>();
-        settings.Setup(s => s.GetEffectiveModelUtilPath()).Returns(_testDir);
         var logger = new Mock<ILogger<PacDeploymentService>>();
-        var service = new PacDeploymentService(pac.Object, settings.Object, logger.Object);
+        var service = new PacDeploymentService(pac.Object, logger.Object);
 
         Assert.DoesNotThrowAsync(async () =>
             await service.DeployAsync(packagePath, Path.Combine(_testDir, "d.log"), _testDir));

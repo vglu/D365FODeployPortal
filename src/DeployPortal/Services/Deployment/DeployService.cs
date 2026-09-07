@@ -87,11 +87,11 @@ public class DeployService : IDeployService
             // Step 5: Deploy
             onLog?.Invoke($"Starting deployment to {environment.Name}...");
             await _deploymentService.DeployAsync(packagePath, logFilePath, isolatedAuthDir, onLog);
-            onLog?.Invoke($"Deployment to {environment.Name} completed.");
+            onLog?.Invoke($"PAC package deploy finished for {environment.Name}.");
 
             // Step 6: Post-deployment validation (CHECK 2)
             await RunValidatorsAsync(context, isPreDeploy: false, onLog);
-            onLog?.Invoke("[Post-Deploy Validation] Confirmed: package install succeeded on the expected environment.");
+            onLog?.Invoke("[Post-Deploy Validation] Confirmed: no failure markers; package targeted the expected environment.");
 
             _logger.LogInformation("Deployment to {Env} completed successfully", environment.Name);
         }

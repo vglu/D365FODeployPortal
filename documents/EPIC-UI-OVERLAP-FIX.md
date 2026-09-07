@@ -151,7 +151,7 @@
 **Wave 2 — «Сделать предсказуемым»:**
 - **W2.1** — Лог-вьювер: `<Virtualize>` + JS auto-scroll через `wwwroot/js/log-scroll.js` (`requestAnimationFrame` для корректного scrollHeight после layout). Auto-scroll respects manual scroll (если пользователь прокрутил вверх — не дёргаем).
 - **W2.2** — Master-detail policy: `documents/UI-PATTERNS.md` с тремя вариантами (inline / route / dialog) и критериями выбора. DeploymentDetail.razor оставлен в W1.4-варианте (route + symmetric grid) как канонический пример «route».
-- **W2.3** — `wwwroot/css/tokens.css` с CSS custom properties (`--dp-fz-chip-meta`, `--dp-fz-table-aux`, `--dp-fz-code`, `--dp-font-mono`) + утилитарные классы `.dp-text-chip-meta`, `.dp-text-table-aux`, `.dp-font-mono`, `.code-block`.
+- **W2.3** — `wwwroot/css/tokens.css` с CSS custom properties (`--dp-fz-chip-meta`, `--dp-fz-table-aux`, `--dp-fz-code`, `--dp-font-mono`, `--dp-md-accent-width`) + утилитарные классы `.dp-text-chip-meta`, `.dp-text-table-aux`, `.dp-font-mono`, `.code-block`. Дополнено motion-токенами (design-eng pass, 2026-09): `--dp-ease-out` (cubic-bezier(0.23,1,0.32,1)), `--dp-dur-press` (160ms), `--dp-dur-hover` (200ms), `--dp-dur-enter` (180ms) — используются в app.css для press-feedback кнопок, hover/press состояний `.dp-stat-card`, подсветки drop-zone и entry-анимации master-detail контента.
 - **W2.4** — Цветовая семантика: ~40 точек `Color.Secondary`/`Color.Tertiary` приведены к `Default`/`Primary`/`Info`/`Warning` по правилам из UI-PATTERNS.md. Merge action → Primary; "Merged" package type → Warning. Color.Tertiary полностью удалён из non-timeline кода.
 - **W2.5** — Inline `font-size:` убраны (~10 точек) в пользу токен-классов. Code-blocks (Home, Environments setup-script paper) переведены на `.code-block`.
 

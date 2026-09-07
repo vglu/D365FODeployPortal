@@ -63,9 +63,19 @@ public class PostDeployLogValidator : IDeploymentValidator
 
             if (string.IsNullOrWhiteSpace(uriLine))
             {
-                _logger.LogWarning("Could not find 'Deployment Target Organization Uri' in log file: {LogPath}", context.LogFilePath);
-                onLog?.Invoke($"[Warning] Could not find Organization Uri in log file, skipping target validation.");
-                return;
+                var errorMsg =
+                    $"POST-DEPLOYMENT VALIDATION FAILED: could not find 'Deployment Target Organization Uri' in log.\n\n" +
+                    $"This usually means Package Deployer aborted before targeting an organization " +
+                    $"(for example missing ImportConfig / Config File Missing).\n\n" +
+                    $"Environment: {context.Environment.Name} ({context.Environment.Url})\n" +
+                    $"Log file: {context.LogFilePath}";
+
+                _logger.LogError(
+                    "POST-DEPLOYMENT VALIDATION FAILED: Organization Uri missing in log {LogPath}",
+                    context.LogFilePath);
+
+                onLog?.Invoke("[Post-Deploy Validation] Organization Uri not found in log — treating as failure.");
+                throw new InvalidOperationException(errorMsg);
             }
 
             // Extract the URL from the line

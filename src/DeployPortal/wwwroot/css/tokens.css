@@ -35,6 +35,15 @@
     /* Master-detail accent — the left bar that visually links
        a child row to its parent in expandable tables. */
     --dp-md-accent-width: 3px;
+
+    /* Motion — single easing + durations for every custom transition
+       (press feedback, stat-card hover, drop-zone highlight, detail
+       row entry). Strong ease-out: starts fast so the UI reads as
+       responding instantly, then settles. */
+    --dp-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --dp-dur-press: 160ms;   /* button / card press feedback */
+    --dp-dur-hover: 200ms;   /* hover lifts, color highlights */
+    --dp-dur-enter: 180ms;   /* small content entering the page */
 }
 
 /* Utility classes built on top of the tokens. Prefer using these

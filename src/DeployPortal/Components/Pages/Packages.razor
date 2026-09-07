@@ -60,7 +60,7 @@
 <MudTable @ref="_table" Items="@_packages" Dense="true" Hover="true" Elevation="0" Loading="@_loading"
           MultiSelection="true" @bind-SelectedItems="_selectedForMerge" SelectOnRowClick="false"
           Filter="new Func<Package, bool>(FilterFunc)" FixedHeader="true"
-          Breakpoint="Breakpoint.None">
+          Breakpoint="Breakpoint.None" Class="dp-packages-table">
     <ToolBarContent>
         <MudText Typo="Typo.h6">Active Packages</MudText>
         @if (_selectedForMerge.Count >= 2)
@@ -94,7 +94,7 @@
         <MudTh Style="width:44px">
             <MudTooltip Text="License Files"><MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" /></MudTooltip>
         </MudTh>
-        <MudTh Style="width:90px">Actions</MudTh>
+        <MudTh Class="dp-col-actions">Actions</MudTh>
     </HeaderContent>
     <RowTemplate>
         <MudTd DataLabel="Name">
@@ -105,11 +105,15 @@
                                    Size="Size.Small" OnClick="@(() => ToggleExpand(context.Id))"
                                    title="Show source packages" />
                 }
-                <span>@context.Name</span>
+                <MudTooltip Text="@context.Name">
+                    <span class="dp-col-truncate">@context.Name</span>
+                </MudTooltip>
             </MudStack>
         </MudTd>
         <MudTd DataLabel="File">
-            <span class="mud-text-secondary dp-text-table-aux">@context.OriginalFileName</span>
+            <MudTooltip Text="@context.OriginalFileName">
+                <span class="mud-text-secondary dp-text-table-aux dp-col-truncate dp-col-file">@context.OriginalFileName</span>
+            </MudTooltip>
         </MudTd>
         <MudTd DataLabel="Type">
             <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
@@ -131,19 +135,19 @@
                 </MudTooltip>
             }
         </MudTd>
-        <MudTd>
-            <MudStack Row="true" Spacing="0">
-                @* Download button *@
-                <MudTooltip Text="Download">
-                    <MudIconButton Icon="@Icons.Material.Filled.Download" Size="Size.Small" Color="Color.Primary"
-                                   OnClick="@(() => DownloadPackage(context))" />
-                </MudTooltip>
-                @* Actions menu *@
-                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small"
-                         AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
-                    <MudMenuItem Icon="@Icons.Material.Filled.FolderOpen"
-                                 Href="@($"/packages/{context.Id}/details")">
-                        Manage content
+        <MudTd DataLabel="Actions" Class="dp-col-actions">
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.FolderOpen"
+                           Href="@($"/packages/{context.Id}/details")">
+                    Properties
+                </MudButton>
+                <MudMenu Label="Tools" Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                         Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+                         EndIcon="@Icons.Material.Filled.ArrowDropDown">
+                    <MudMenuItem Icon="@Icons.Material.Filled.Download"
+                                 OnClick="@(() => DownloadPackage(context))">
+                        Download
                     </MudMenuItem>
                     <MudDivider />
                     @if (context.PackageType == "LCS" || context.PackageType == "Merged")
@@ -151,14 +155,7 @@
                         <MudMenuItem Icon="@Icons.Material.Filled.Transform"
                                      OnClick="@(() => ConvertToUnified(context))"
                                      Disabled="@(_converting.Contains(context.Id))">
-                            @if (_converting.Contains(context.Id))
-                            {
-                                @("Converting...")
-                            }
-                            else
-                            {
-                                @("Convert to Unified")
-                            }
+                            @(_converting.Contains(context.Id) ? "Converting..." : "Convert to Unified")
                         </MudMenuItem>
                         <MudMenuItem Icon="@Icons.Material.Filled.FileDownload"
                                      OnClick="@(() => ConvertAndDownload(context, "Unified"))"
@@ -172,14 +169,7 @@
                         <MudMenuItem Icon="@Icons.Material.Filled.Transform"
                                      OnClick="@(() => ConvertToLcs(context))"
                                      Disabled="@(_converting.Contains(context.Id))">
-                            @if (_converting.Contains(context.Id))
-                            {
-                                @("Converting...")
-                            }
-                            else
-                            {
-                                @("Convert to LCS")
-                            }
+                            @(_converting.Contains(context.Id) ? "Converting..." : "Convert to LCS")
                         </MudMenuItem>
                         <MudMenuItem Icon="@Icons.Material.Filled.FileDownload"
                                      OnClick="@(() => ConvertAndDownload(context, "LCS"))"

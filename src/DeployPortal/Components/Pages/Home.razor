@@ -66,7 +66,10 @@
 
 <MudGrid>
     <MudItem xs="12" sm="4">
-        <MudPaper Class="pa-4" Elevation="2" Style="cursor: pointer;" @onclick="@(() => Nav.NavigateTo("/packages"))">
+        <MudPaper Class="pa-4 dp-stat-card" Elevation="2" role="link" tabindex="0"
+                  aria-label="@($"{_packageCount} packages — open Packages")"
+                  @onclick="@(() => Nav.NavigateTo("/packages"))"
+                  @onkeydown="@(e => OnStatCardKey(e, "/packages"))">
             <MudStack Row="true" AlignItems="AlignItems.Center">
                 <MudIcon Icon="@Icons.Material.Filled.Inventory2" Size="Size.Large" Color="Color.Primary" />
                 <div>
@@ -78,7 +81,10 @@
     </MudItem>
 
     <MudItem xs="12" sm="4">
-        <MudPaper Class="pa-4" Elevation="2" Style="cursor: pointer;" @onclick="@(() => Nav.NavigateTo("/environments"))">
+        <MudPaper Class="pa-4 dp-stat-card" Elevation="2" role="link" tabindex="0"
+                  aria-label="@($"{_envCount} environments — open Environments")"
+                  @onclick="@(() => Nav.NavigateTo("/environments"))"
+                  @onkeydown="@(e => OnStatCardKey(e, "/environments"))">
             <MudStack Row="true" AlignItems="AlignItems.Center">
                 <MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Large" Color="Color.Success" />
                 <div>
@@ -90,7 +96,10 @@
     </MudItem>
 
     <MudItem xs="12" sm="4">
-        <MudPaper Class="pa-4" Elevation="2" Style="cursor: pointer;" @onclick="@(() => Nav.NavigateTo("/deployments"))">
+        <MudPaper Class="pa-4 dp-stat-card" Elevation="2" role="link" tabindex="0"
+                  aria-label="@($"{_deployCount} deployments — open History")"
+                  @onclick="@(() => Nav.NavigateTo("/deployments"))"
+                  @onkeydown="@(e => OnStatCardKey(e, "/deployments"))">
             <MudStack Row="true" AlignItems="AlignItems.Center">
                 <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Size="Size.Large" Color="Color.Warning" />
                 <div>
@@ -163,6 +172,12 @@
             .OrderByDescending(d => d.QueuedAt)
             .Take(10)
             .ToListAsync();
+    }
+
+    private void OnStatCardKey(KeyboardEventArgs e, string url)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+            Nav.NavigateTo(url);
     }
 
     private Color GetStatusColor(DeploymentStatus status) => status switch
