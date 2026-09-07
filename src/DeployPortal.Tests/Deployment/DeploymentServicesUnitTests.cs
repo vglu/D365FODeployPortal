@@ -337,6 +337,154 @@ Organization Friendly Name: Example-Target-Env"
         await Task.CompletedTask;
     }
 
+    [Test]
+    public void PostDeployLogValidator_ValidateAsync_Throws_WhenLogContainsRaiseFailEvent()
+    {
+        var logger = new Mock<ILogger<PostDeployLogValidator>>();
+        var validator = new PostDeployLogValidator(logger.Object);
+        var logPath = Path.Combine(_testDir, "deploy-fail.log");
+        File.WriteAllText(logPath,
+            "PackageDeployVerb Information: 8 : Message: RaiseFailEvent - update progress with fail event\n" +
+            "PackageDeployVerb Information: 8 : Message: Deployment Target Organization Uri: https://test-env.crm.dynamics.com/XRMServices/...");
+
+        var context = new DeploymentContext
+        {
+            Environment = new Models.Environment
+            {
+                Name = "Test",
+                Url = "test-env.crm.dynamics.com"
+            },
+            IsolatedAuthDir = _testDir,
+            LogFilePath = logPath,
+            PackagePath = Path.Combine(_testDir, "TemplatePackage.dll")
+        };
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await validator.ValidateAsync(context));
+        Assert.That(ex!.Message, Does.Contain("install reported failure"));
+        Assert.That(ex.Message, Does.Contain("RaiseFailEvent"));
+    }
+
+    [Test]
+    public void PostDeployLogValidator_ValidateAsync_Throws_WhenLogContainsFoInstallFailed()
+    {
+        var logger = new Mock<ILogger<PostDeployLogValidator>>();
+        var validator = new PostDeployLogValidator(logger.Object);
+        var logPath = Path.Combine(_testDir, "deploy-fo-fail.log");
+        File.WriteAllText(logPath,
+            "Error: Installation failed for Finance and Operations application\n" +
+            "PackageDeployVerb Information: 8 : Message: Deployment Target Organization Uri: https://test-env.crm.dynamics.com/XRMServices/...");
+
+        var context = new DeploymentContext
+        {
+            Environment = new Models.Environment
+            {
+                Name = "Test",
+                Url = "test-env.crm.dynamics.com"
+            },
+            IsolatedAuthDir = _testDir,
+            LogFilePath = logPath,
+            PackagePath = Path.Combine(_testDir, "TemplatePackage.dll")
+        };
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(
+            async () => await validator.ValidateAsync(context));
+        Assert.That(ex!.Message, Does.Contain("Installation failed for Finance and Operations"));
+    }
+
+    #endregion
+
+    #region PackageDeployFailureDetector Tests
+
+    [Test]
+    public void PackageDeployFailureDetector_FindFailureEvidence_ReturnsNull_ForCleanLog()
+    {
+        var text = "Deployment Target Organization Uri: https://ok.crm.dynamics.com/\nImport completed";
+        Assert.That(PackageDeployFailureDetector.FindFailureEvidence(text), Is.Null);
+    }
+
+    [Test]
+    public void PackageDeployFailureDetector_FindFailureEvidence_DetectsRaiseFailEvent()
+    {
+        var text = "Message: RaiseFailEvent - update progress with fail event";
+        var evidence = PackageDeployFailureDetector.FindFailureEvidence(text);
+        Assert.That(evidence, Is.Not.Null);
+        Assert.That(evidence, Does.Contain("RaiseFailEvent"));
+    }
+
+    [Test]
+    public void PackageDeployFailureDetector_FindFailureEvidence_DetectsFoInstallFailed()
+    {
+        var text = "Error: Installation failed for Finance and Operations application";
+        Assert.That(PackageDeployFailureDetector.HasFailure(text), Is.True);
+    }
+
+    #endregion
+
+    #region PacDeploymentService Tests
+
+    [Test]
+    public void PacDeploymentService_DeployAsync_Throws_WhenPacExitsZeroButStdoutHasFoFailure()
+    {
+        var packagePath = Path.Combine(_testDir, "TemplatePackage.dll");
+        File.WriteAllText(packagePath, "dll");
+
+        var pac = new Mock<IPacCliExecutor>();
+        pac.Setup(p => p.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<IDictionary<string, string>?>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<string>?>()))
+            .ReturnsAsync(new PacCliResult
+            {
+                ExitCode = 0,
+                StandardOutput = "Error: Installation failed for Finance and Operations application\n",
+                StandardError = ""
+            });
+
+        var settings = new Mock<ISettingsService>();
+        settings.Setup(s => s.GetEffectiveModelUtilPath()).Returns(_testDir);
+        var logger = new Mock<ILogger<PacDeploymentService>>();
+        var service = new PacDeploymentService(pac.Object, settings.Object, logger.Object);
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await service.DeployAsync(packagePath, Path.Combine(_testDir, "d.log"), _testDir));
+
+        Assert.That(ex!.Message, Does.Contain("despite exit code 0"));
+        Assert.That(ex.Message, Does.Contain("Installation failed for Finance and Operations"));
+    }
+
+    [Test]
+    public async Task PacDeploymentService_DeployAsync_Succeeds_WhenPacExitsZeroAndOutputIsClean()
+    {
+        var packagePath = Path.Combine(_testDir, "TemplatePackage.dll");
+        File.WriteAllText(packagePath, "dll");
+
+        var pac = new Mock<IPacCliExecutor>();
+        pac.Setup(p => p.ExecuteAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<IDictionary<string, string>?>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<string>?>()))
+            .ReturnsAsync(new PacCliResult
+            {
+                ExitCode = 0,
+                StandardOutput = "Package deployed successfully\n",
+                StandardError = ""
+            });
+
+        var settings = new Mock<ISettingsService>();
+        settings.Setup(s => s.GetEffectiveModelUtilPath()).Returns(_testDir);
+        var logger = new Mock<ILogger<PacDeploymentService>>();
+        var service = new PacDeploymentService(pac.Object, settings.Object, logger.Object);
+
+        Assert.DoesNotThrowAsync(async () =>
+            await service.DeployAsync(packagePath, Path.Combine(_testDir, "d.log"), _testDir));
+        await Task.CompletedTask;
+    }
+
     #endregion
 
     #region IsolatedDirectoryManager Tests

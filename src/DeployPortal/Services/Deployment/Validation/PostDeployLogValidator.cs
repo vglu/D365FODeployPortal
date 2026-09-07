@@ -1,8 +1,8 @@
 namespace DeployPortal.Services.Deployment.Validation;
 
 /// <summary>
-/// Post-deployment validator: parses deployment log file and verifies "Deployment Target Organization Uri".
-/// This is the final safety check to ensure the package was deployed to the correct environment.
+/// Post-deployment validator: parses deployment log file for install failures and verifies
+/// "Deployment Target Organization Uri" (correct environment).
 /// </summary>
 public class PostDeployLogValidator : IDeploymentValidator
 {
@@ -17,7 +17,7 @@ public class PostDeployLogValidator : IDeploymentValidator
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        onLog?.Invoke("[Post-Deploy Validation] Verifying deployment target from log file...");
+        onLog?.Invoke("[Post-Deploy Validation] Verifying deployment outcome from log file...");
 
         // Wait a moment for log file to be fully written
         await Task.Delay(1000);
@@ -33,6 +33,27 @@ public class PostDeployLogValidator : IDeploymentValidator
         {
             var logContent = await File.ReadAllTextAsync(context.LogFilePath);
 
+            // PAC may exit 0 while Package Deployer still reports FO install failure.
+            var failureEvidence = PackageDeployFailureDetector.FindFailureEvidence(logContent);
+            if (failureEvidence != null)
+            {
+                var errorMsg =
+                    $"POST-DEPLOYMENT VALIDATION FAILED: package install reported failure in log.\n\n" +
+                    $"Evidence: {failureEvidence}\n\n" +
+                    $"Environment: {context.Environment.Name} ({context.Environment.Url})\n" +
+                    $"Log file: {context.LogFilePath}";
+
+                _logger.LogError(
+                    "POST-DEPLOYMENT VALIDATION FAILED (install failure). Evidence: {Evidence}",
+                    failureEvidence);
+
+                onLog?.Invoke($"[Post-Deploy Validation] Install failure detected: {failureEvidence}");
+                throw new InvalidOperationException(errorMsg);
+            }
+
+            onLog?.Invoke("[Post-Deploy Validation] No install-failure markers found in log.");
+            onLog?.Invoke("[Post-Deploy Validation] Verifying deployment target from log file...");
+
             // Find the line with "Deployment Target Organization Uri:"
             // Example: "PackageDeployVerb Information: 8 : Message: Deployment Target Organization Uri: https://target-env.crm.dynamics.com/XRMServices/2011/Organization.svc/web?SDKClientVersion=9.2.49.14828"
             var uriLinePrefix = "Deployment Target Organization Uri:";
@@ -43,7 +64,7 @@ public class PostDeployLogValidator : IDeploymentValidator
             if (string.IsNullOrWhiteSpace(uriLine))
             {
                 _logger.LogWarning("Could not find 'Deployment Target Organization Uri' in log file: {LogPath}", context.LogFilePath);
-                onLog?.Invoke($"[Warning] Could not find Organization Uri in log file, skipping validation.");
+                onLog?.Invoke($"[Warning] Could not find Organization Uri in log file, skipping target validation.");
                 return;
             }
 
@@ -58,7 +79,7 @@ public class PostDeployLogValidator : IDeploymentValidator
             {
                 // CRITICAL ERROR: Deployed to wrong environment!
                 var errorMsg =
-                    $"❌ POST-DEPLOYMENT VALIDATION FAILED! ❌\n" +
+                    $"POST-DEPLOYMENT VALIDATION FAILED!\n" +
                     $"Package was deployed to WRONG environment!\n\n" +
                     $"Expected environment: {context.Environment.Name} ({context.Environment.Url})\n" +
                     $"Actual deployment target (from log): {actualUri}\n\n" +
@@ -73,8 +94,8 @@ public class PostDeployLogValidator : IDeploymentValidator
                 throw new InvalidOperationException(errorMsg);
             }
 
-            onLog?.Invoke($"[Post-Deploy Validation] ✓ Organization Uri from log: {actualUri}");
-            onLog?.Invoke($"[Post-Deploy Validation] ✓ Matches expected environment: {context.Environment.Url}");
+            onLog?.Invoke($"[Post-Deploy Validation] Organization Uri from log: {actualUri}");
+            onLog?.Invoke($"[Post-Deploy Validation] Matches expected environment: {context.Environment.Url}");
 
             _logger.LogInformation(
                 "Post-deployment validation passed. Deployed to correct environment: {Env}",

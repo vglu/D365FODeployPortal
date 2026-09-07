@@ -91,7 +91,7 @@ public class DeployService : IDeployService
 
             // Step 6: Post-deployment validation (CHECK 2)
             await RunValidatorsAsync(context, isPreDeploy: false, onLog);
-            onLog?.Invoke("[Post-Deploy Validation] ✓ Confirmed: package was deployed to correct environment.");
+            onLog?.Invoke("[Post-Deploy Validation] Confirmed: package install succeeded on the expected environment.");
 
             _logger.LogInformation("Deployment to {Env} completed successfully", environment.Name);
         }

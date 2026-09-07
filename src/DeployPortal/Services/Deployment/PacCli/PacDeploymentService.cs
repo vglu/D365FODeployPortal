@@ -1,3 +1,5 @@
+using DeployPortal.Services.Deployment.Validation;
+
 namespace DeployPortal.Services.Deployment.PacCli;
 
 /// <summary>
@@ -58,6 +60,18 @@ public class PacDeploymentService : IPacDeploymentService
             throw new InvalidOperationException(
                 $"PAC package deployment failed with exit code {result.ExitCode}. " +
                 $"Error: {result.StandardError}");
+        }
+
+        // PAC can exit 0 while still printing FO install failure on stdout/stderr.
+        var combinedOutput = $"{result.StandardOutput}\n{result.StandardError}";
+        var failureEvidence = PackageDeployFailureDetector.FindFailureEvidence(combinedOutput);
+        if (failureEvidence != null)
+        {
+            _logger.LogError(
+                "PAC exited 0 but install failure detected in output: {Evidence}",
+                failureEvidence);
+            throw new InvalidOperationException(
+                $"PAC package deployment reported failure despite exit code 0. {failureEvidence}");
         }
 
         _logger.LogInformation("Package deployment completed successfully");
