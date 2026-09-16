@@ -6,11 +6,12 @@ namespace DeployPortal.Services.Deployment.Validation;
 /// </summary>
 public interface IDeploymentValidator
 {
+    /// <summary>Whether this validator runs before or after <c>pac package deploy</c>.</summary>
+    DeploymentValidationPhase Phase { get; }
+
     /// <summary>
     /// Validates deployment context.
     /// Throws InvalidOperationException if validation fails.
     /// </summary>
-    /// <param name="context">Deployment context with all necessary information</param>
-    /// <param name="onLog">Optional callback for logging validation steps</param>
     Task ValidateAsync(DeploymentContext context, Action<string>? onLog = null);
 }

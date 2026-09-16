@@ -120,6 +120,12 @@ public class SettingsService : ISettingsService
     /// <summary>When true, pre-deploy validation requires Organization Friendly Name match when set on environment.</summary>
     public bool VerifyOrganizationFriendlyNameOnDeploy => string.Equals(GetSetting("VerifyOrganizationFriendlyNameOnDeploy", "false"), "true", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// When true (default), run <c>pac package show</c> before deploy to detect FO Application Host
+    /// busy states (ExternalOrchestration, EnvironmentNotInReadyState) without starting a full install.
+    /// </summary>
+    public bool VerifyFoHostReadyOnDeploy => !string.Equals(GetSetting("VerifyFoHostReadyOnDeploy", "true"), "false", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Azure DevOps: organization (e.g. contoso or org name from dev.azure.com).</summary>
     public string AzureDevOpsOrganization => GetSetting("AzureDevOpsOrganization", "");
     /// <summary>Azure DevOps: project name or ID.</summary>
@@ -261,7 +267,7 @@ public class SettingsService : ISettingsService
     }
 
     // ========== Read/Write ==========
-    private static readonly string[] FileSettingKeys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath", "SimulateDeployment", "VerifyOrganizationFriendlyNameOnDeploy" };
+    private static readonly string[] FileSettingKeys = new[] { "ConverterEngine", "ProcessingMode", "AzureFunctionsUrl", "AzureBlobConnectionString", "AzureFunctionKey", "ModelUtilPath", "PacCliPath", "PackageStoragePath", "TempWorkingDir", "DatabasePath", "LcsTemplatePath", "SimulateDeployment", "VerifyOrganizationFriendlyNameOnDeploy", "VerifyFoHostReadyOnDeploy" };
 
     public Dictionary<string, string> GetAllSettings()
     {

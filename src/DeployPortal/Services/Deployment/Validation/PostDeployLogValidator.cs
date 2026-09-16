@@ -13,6 +13,8 @@ public class PostDeployLogValidator : IDeploymentValidator
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    public DeploymentValidationPhase Phase => DeploymentValidationPhase.PostDeploy;
+
     public async Task ValidateAsync(DeploymentContext context, Action<string>? onLog = null)
     {
         ArgumentNullException.ThrowIfNull(context);

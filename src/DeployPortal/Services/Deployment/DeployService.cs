@@ -46,79 +46,120 @@ public class DeployService : IDeployService
         ArgumentNullException.ThrowIfNull(logFilePath);
         ArgumentNullException.ThrowIfNull(isolatedAuthDir);
 
-        // Step 0: Create isolated directory
         Directory.CreateDirectory(isolatedAuthDir);
         onLog?.Invoke($"[Isolation] Using dedicated PAC auth directory: {isolatedAuthDir}");
         _logger.LogInformation("Starting deployment to {Env} using isolated auth dir: {Dir}", environment.Name, isolatedAuthDir);
 
+        string? deployZipPath = null;
         try
         {
-            // Step 1: Authenticate
-            await _authService.AuthenticateAsync(environment, isolatedAuthDir, onLog);
+            // Exclusive bind window: auth create/select + who + FO probe must not overlap
+            // another deployment's auth (parallel long installs start after this releases).
+            using (await _authService.AcquireAuthBindGateAsync(onLog))
+            {
+                await _authService.AuthenticateAsync(environment, isolatedAuthDir, onLog);
 
-            // Step 2: Verify connection (who am I)
-            onLog?.Invoke("Verifying connection (pac auth who)...");
-            var whoOutput = await _authService.WhoAmIAsync(isolatedAuthDir);
-            onLog?.Invoke("Connection verified.");
+                onLog?.Invoke("Verifying connection (pac auth who)...");
+                var whoOutput = await _authService.WhoAmIAsync(isolatedAuthDir);
+                onLog?.Invoke("Connection verified.");
 
-            // Step 3: Pre-deployment validation (CHECK 1)
-            var packagePath = Path.Combine(unifiedPackageDir, "TemplatePackage.dll");
-            var context = new DeploymentContext
+                var packagePath = Path.Combine(unifiedPackageDir, "TemplatePackage.dll");
+                if (!File.Exists(packagePath))
+                    throw new FileNotFoundException($"TemplatePackage.dll not found in {unifiedPackageDir}", packagePath);
+
+                var importConfigPath = Path.Combine(unifiedPackageDir, "PackageAssets", "ImportConfig.xml");
+                if (!File.Exists(importConfigPath))
+                {
+                    throw new FileNotFoundException(
+                        "ImportConfig.xml not found next to TemplatePackage.dll. " +
+                        $"Looked for: {importConfigPath}",
+                        importConfigPath);
+                }
+
+                // One zip for FO host probe + package deploy (DLL + PackageAssets stay together).
+                onLog?.Invoke("Packaging Unified folder for PAC (probe + deploy)...");
+                deployZipPath = UnifiedPackageZipBuilder.CreateZip(unifiedPackageDir);
+                onLog?.Invoke($"Unified zip: {Path.GetFileName(deployZipPath)}");
+
+                var context = new DeploymentContext
+                {
+                    Environment = environment,
+                    IsolatedAuthDir = isolatedAuthDir,
+                    LogFilePath = logFilePath,
+                    PackagePath = packagePath,
+                    DeployZipPath = deployZipPath,
+                    PacAuthWhoOutput = whoOutput,
+                    VerifyOrganizationFriendlyName = _settings.VerifyOrganizationFriendlyNameOnDeploy,
+                    VerifyFoHostReadyOnDeploy = _settings.VerifyFoHostReadyOnDeploy
+                };
+
+                await RunValidatorsAsync(context, DeploymentValidationPhase.PreDeploy, onLog);
+
+                // Re-select after probe so package deploy cannot pick up another profile.
+                await _authService.SelectProfileAsync(environment, isolatedAuthDir, onLog);
+
+                if (_settings.SimulateDeployment)
+                {
+                    onLog?.Invoke("[SIMULATION] Deployment is disabled in Settings. Package deploy skipped. Auth and connection check completed successfully.");
+                    onLog?.Invoke($"Deployment to {environment.Name} completed (simulated).");
+                    _logger.LogInformation("Deployment simulated (SimulateDeployment = true)");
+                    return;
+                }
+
+                onLog?.Invoke($"Starting deployment to {environment.Name}...");
+            }
+
+            // Gate released: long FnO import may overlap other deployments' auth/bind windows.
+            var dllPath = Path.Combine(unifiedPackageDir, "TemplatePackage.dll");
+            await _deploymentService.DeployAsync(dllPath, logFilePath, isolatedAuthDir, onLog, deployZipPath);
+            onLog?.Invoke($"PAC package deploy finished for {environment.Name}.");
+
+            var postContext = new DeploymentContext
             {
                 Environment = environment,
                 IsolatedAuthDir = isolatedAuthDir,
                 LogFilePath = logFilePath,
-                PackagePath = packagePath,
-                PacAuthWhoOutput = whoOutput,
-                VerifyOrganizationFriendlyName = _settings.VerifyOrganizationFriendlyNameOnDeploy
+                PackagePath = dllPath,
+                DeployZipPath = deployZipPath,
+                VerifyOrganizationFriendlyName = _settings.VerifyOrganizationFriendlyNameOnDeploy,
+                VerifyFoHostReadyOnDeploy = _settings.VerifyFoHostReadyOnDeploy
             };
-
-            await RunValidatorsAsync(context, isPreDeploy: true, onLog);
-
-            // Step 4: Check simulation mode
-            if (_settings.SimulateDeployment)
-            {
-                onLog?.Invoke("[SIMULATION] Deployment is disabled in Settings. Package deploy skipped. Auth and connection check completed successfully.");
-                onLog?.Invoke($"Deployment to {environment.Name} completed (simulated).");
-                _logger.LogInformation("Deployment simulated (SimulateDeployment = true)");
-                return;
-            }
-
-            // Step 5: Deploy
-            onLog?.Invoke($"Starting deployment to {environment.Name}...");
-            await _deploymentService.DeployAsync(packagePath, logFilePath, isolatedAuthDir, onLog);
-            onLog?.Invoke($"PAC package deploy finished for {environment.Name}.");
-
-            // Step 6: Post-deployment validation (CHECK 2)
-            await RunValidatorsAsync(context, isPreDeploy: false, onLog);
+            await RunValidatorsAsync(postContext, DeploymentValidationPhase.PostDeploy, onLog);
             onLog?.Invoke("[Post-Deploy Validation] Confirmed: no failure markers; package targeted the expected environment.");
 
             _logger.LogInformation("Deployment to {Env} completed successfully", environment.Name);
         }
         finally
         {
-            // Cleanup: Delete isolated auth directory
+            if (!string.IsNullOrEmpty(deployZipPath))
+            {
+                try
+                {
+                    if (File.Exists(deployZipPath))
+                        File.Delete(deployZipPath);
+                }
+                catch
+                {
+                    /* ignore */
+                }
+            }
+
             onLog?.Invoke($"[Cleanup] Removing isolated PAC auth directory...");
             _directoryManager.DeleteIsolatedDirectory(isolatedAuthDir);
             onLog?.Invoke($"[Cleanup] Removed isolated PAC auth directory: {isolatedAuthDir}");
         }
     }
 
-    /// <summary>
-    /// Runs all validators for the specified phase (pre-deploy or post-deploy).
-    /// Pre-deploy validators: PreDeployAuthValidator
-    /// Post-deploy validators: PostDeployLogValidator
-    /// </summary>
-    private async Task RunValidatorsAsync(DeploymentContext context, bool isPreDeploy, Action<string>? onLog)
+    private async Task RunValidatorsAsync(
+        DeploymentContext context,
+        DeploymentValidationPhase phase,
+        Action<string>? onLog)
     {
-        var phase = isPreDeploy ? "PRE-DEPLOY" : "POST-DEPLOY";
-        var validatorType = isPreDeploy ? typeof(PreDeployAuthValidator) : typeof(PostDeployLogValidator);
-
         var applicableValidators = _validators
-            .Where(v => v.GetType() == validatorType)
+            .Where(v => v.Phase == phase)
             .ToList();
 
-        if (!applicableValidators.Any())
+        if (applicableValidators.Count == 0)
         {
             _logger.LogWarning("No {Phase} validators found", phase);
             return;

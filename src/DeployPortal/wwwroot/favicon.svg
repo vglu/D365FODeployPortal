@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="DeployPortal">
+  <rect width="32" height="32" rx="7" fill="#0F4C5C"/>
+  <!-- package -->
+  <path fill="#F4F7F8" d="M8.5 12.2 16 8.5l7.5 3.7v8.6L16 24.5l-7.5-3.7z"/>
+  <path fill="#0F4C5C" opacity=".2" d="M16 8.5v16M8.5 12.2 16 16l7.5-3.8"/>
+  <!-- deploy arrow -->
+  <path fill="#3DDC97" d="M15.1 14.2h1.8v5.2h2.2L16 23.1l-3.1-3.7h2.2z"/>
+</svg>

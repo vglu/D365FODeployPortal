@@ -6,13 +6,26 @@ namespace DeployPortal.Services.Deployment.PacCli;
 public interface IPacAuthService
 {
     /// <summary>
+    /// Acquires the process-wide exclusive PAC auth/bind window.
+    /// Hold until auth, who, pre-deploy probes, and profile re-select finish; then dispose so
+    /// long <c>package deploy</c> can run in parallel with other deployments.
+    /// </summary>
+    Task<IDisposable> AcquireAuthBindGateAsync(Action<string>? onLog = null);
+
+    /// <summary>
     /// Authenticates to Power Platform environment.
     /// Uses Service Principal if available, otherwise falls back to interactive device code flow.
+    /// Always ends with <c>auth select</c> for the environment profile.
     /// </summary>
-    /// <param name="environment">Target environment with auth credentials</param>
-    /// <param name="isolatedAuthDir">Isolated directory for PAC auth profile</param>
-    /// <param name="onLog">Optional callback for logging</param>
     Task AuthenticateAsync(
+        Models.Environment environment,
+        string isolatedAuthDir,
+        Action<string>? onLog = null);
+
+    /// <summary>
+    /// Re-selects the named auth profile in the isolated directory (before package deploy).
+    /// </summary>
+    Task SelectProfileAsync(
         Models.Environment environment,
         string isolatedAuthDir,
         Action<string>? onLog = null);
@@ -20,7 +33,5 @@ public interface IPacAuthService
     /// <summary>
     /// Executes 'pac auth who' to get current authentication context.
     /// </summary>
-    /// <param name="isolatedAuthDir">Isolated directory for PAC auth profile</param>
-    /// <returns>Output from 'pac auth who' command</returns>
     Task<string> WhoAmIAsync(string isolatedAuthDir);
 }

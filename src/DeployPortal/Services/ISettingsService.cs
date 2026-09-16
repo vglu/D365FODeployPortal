@@ -19,6 +19,8 @@ public interface ISettingsService
     bool SimulateDeployment { get; }
     /// <summary>When true, pre-deploy validation requires Organization Friendly Name match (if set on environment).</summary>
     bool VerifyOrganizationFriendlyNameOnDeploy { get; }
+    /// <summary>When true, run pac package show before deploy to detect FO host busy (ExternalOrchestration).</summary>
+    bool VerifyFoHostReadyOnDeploy { get; }
     string AzureDevOpsOrganization { get; }
     string AzureDevOpsProject { get; }
     string AzureDevOpsPatEncrypted { get; }

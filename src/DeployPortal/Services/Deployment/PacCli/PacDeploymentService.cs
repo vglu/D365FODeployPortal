@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using DeployPortal.Services.Deployment.Validation;
 
 namespace DeployPortal.Services.Deployment.PacCli;
@@ -24,7 +23,8 @@ public class PacDeploymentService : IPacDeploymentService
         string packagePath,
         string logFilePath,
         string isolatedAuthDir,
-        Action<string>? onLog = null)
+        Action<string>? onLog = null,
+        string? prebuiltZipPath = null)
     {
         ArgumentNullException.ThrowIfNull(packagePath);
         ArgumentNullException.ThrowIfNull(logFilePath);
@@ -55,17 +55,20 @@ public class PacDeploymentService : IPacDeploymentService
         onLog?.Invoke($"Package: {packagePath}");
         onLog?.Invoke($"PackageAssets: {assetCount} file(s), ImportConfig present.");
 
-        // PAC may load a bare TemplatePackage.dll without its sibling PackageAssets folder
-        // (Config File Missing). Deploying a zip keeps DLL + PackageAssets together; PAC
-        // extracts them to a temp folder (e.g. %TEMP%\xxxx.CPY\PackageAssets\ImportConfig.xml).
-        // Zip must be created OUTSIDE packageDir (CreateFromDirectory cannot write into itself).
-        var deployZipPath = Path.Combine(
-            Path.GetTempPath(),
-            $"pac_deploy_{Guid.NewGuid():N}.zip");
-        onLog?.Invoke($"Packaging Unified folder for PAC: {Path.GetFileName(deployZipPath)}");
-        if (File.Exists(deployZipPath))
-            File.Delete(deployZipPath);
-        ZipFile.CreateFromDirectory(packageDir, deployZipPath, CompressionLevel.Fastest, includeBaseDirectory: false);
+        var ownsZip = string.IsNullOrWhiteSpace(prebuiltZipPath);
+        string deployZipPath;
+        if (!ownsZip)
+        {
+            deployZipPath = prebuiltZipPath!;
+            if (!File.Exists(deployZipPath))
+                throw new FileNotFoundException($"Prebuilt Unified zip not found: {deployZipPath}", deployZipPath);
+            onLog?.Invoke($"Using prebuilt Unified zip for PAC: {Path.GetFileName(deployZipPath)}");
+        }
+        else
+        {
+            deployZipPath = UnifiedPackageZipBuilder.CreateZip(packageDir);
+            onLog?.Invoke($"Packaging Unified folder for PAC: {Path.GetFileName(deployZipPath)}");
+        }
 
         try
         {
@@ -111,14 +114,17 @@ public class PacDeploymentService : IPacDeploymentService
         }
         finally
         {
-            try
+            if (ownsZip)
             {
-                if (File.Exists(deployZipPath))
-                    File.Delete(deployZipPath);
-            }
-            catch
-            {
-                /* ignore */
+                try
+                {
+                    if (File.Exists(deployZipPath))
+                        File.Delete(deployZipPath);
+                }
+                catch
+                {
+                    /* ignore */
+                }
             }
         }
     }

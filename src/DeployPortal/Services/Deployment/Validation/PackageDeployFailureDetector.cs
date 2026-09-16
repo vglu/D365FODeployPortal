@@ -22,7 +22,24 @@ public static class PackageDeployFailureDetector
         "ExternalOrchestration",
         "Mismatched to Finance and Operations Application Host",
         "Finance and Operations module validation failure",
-        "Configuration Read Failed"
+        "Configuration Read Failed",
+        "EnvironmentNotInReadyState",
+        "Environment has unexpected state",
+        "Request cannot be accepted on the host environment"
+    ];
+
+    /// <summary>
+    /// Markers that mean the FO Application Host will not accept packages right now.
+    /// Used by the pre-deploy <c>pac package show</c> probe (narrower than full deploy failure scan).
+    /// </summary>
+    private static readonly string[] FoHostBusyMarkers =
+    [
+        "ExternalOrchestration",
+        "EnvironmentNotInReadyState",
+        "Mismatched to Finance and Operations Application Host",
+        "Request cannot be accepted on the host environment",
+        "Environment has unexpected state",
+        "FinOps environment state is:"
     ];
 
     /// <summary>
@@ -45,6 +62,27 @@ public static class PackageDeployFailureDetector
             }
 
             foreach (var marker in FailureMarkers)
+            {
+                if (trimmed.Contains(marker, StringComparison.OrdinalIgnoreCase))
+                    return trimmed;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns evidence that the FO host is busy / not ready for package apply, or null.
+    /// </summary>
+    public static string? FindFoHostBusyEvidence(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        foreach (var line in text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = line.Trim();
+            foreach (var marker in FoHostBusyMarkers)
             {
                 if (trimmed.Contains(marker, StringComparison.OrdinalIgnoreCase))
                     return trimmed;

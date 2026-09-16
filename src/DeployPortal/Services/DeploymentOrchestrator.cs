@@ -13,15 +13,20 @@ public record DeploymentRequest(int DeploymentId);
 
 public class DeploymentOrchestrator : BackgroundService
 {
-    /// <summary>Minimum delay in seconds between starting one deployment and the next. Exposed for tests.</summary>
-    public const int DelayBetweenStartsSeconds = 30;
+    /// <summary>
+    /// Minimum delay between starting one deployment and the next.
+    /// Parallel long installs stay allowed (MaxConcurrentDeployments); this only staggers the
+    /// unsafe PAC auth/bind window so two deploys do not create/select profiles at once.
+    /// </summary>
+    public const int DelayBetweenStartsSeconds = 90;
     private static readonly TimeSpan DelayBetweenStarts = TimeSpan.FromSeconds(DelayBetweenStartsSeconds);
 
     private readonly Channel<DeploymentRequest> _channel;
     private readonly IServiceProvider _services;
     private readonly ILogger<DeploymentOrchestrator> _logger;
     private readonly ISettingsService _settings;
-    private DateTime _lastDeploymentStart = DateTime.MinValue;
+    /// <summary>UTC instant when the next deployment is allowed to begin ProcessDeployment.</summary>
+    private DateTime _nextAllowedStartUtc = DateTime.MinValue;
     private readonly object _startLock = new();
 
     public DeploymentOrchestrator(
@@ -115,24 +120,28 @@ public class DeploymentOrchestrator : BackgroundService
         }
     }
 
-    /// <summary>Waits so that at least <see cref="DelayBetweenStarts"/> has passed since the previous deployment start.</summary>
+    /// <summary>
+    /// Reserves a start slot under lock (no race between workers), then waits until that slot.
+    /// Two workers cannot both observe "elapsed enough" and start together.
+    /// </summary>
     private async Task WaitDelayBetweenStartsAsync(CancellationToken ct)
     {
         TimeSpan toWait;
         lock (_startLock)
         {
             var now = DateTime.UtcNow;
-            var elapsed = _lastDeploymentStart == DateTime.MinValue ? DelayBetweenStarts : now - _lastDeploymentStart;
-            toWait = elapsed >= DelayBetweenStarts ? TimeSpan.Zero : DelayBetweenStarts - elapsed;
+            var slot = _nextAllowedStartUtc <= now ? now : _nextAllowedStartUtc;
+            toWait = slot - now;
+            // Reserve the next slot immediately so concurrent workers queue behind this one.
+            _nextAllowedStartUtc = slot + DelayBetweenStarts;
         }
+
         if (toWait > TimeSpan.Zero)
         {
-            _logger.LogDebug("Waiting {Seconds}s before starting next deployment.", toWait.TotalSeconds);
+            _logger.LogInformation(
+                "Staggering deployment start by {Seconds:F0}s (safe PAC auth/bind window).",
+                toWait.TotalSeconds);
             await Task.Delay(toWait, ct);
-        }
-        lock (_startLock)
-        {
-            _lastDeploymentStart = DateTime.UtcNow;
         }
     }
 

@@ -136,6 +136,7 @@ try
     
     // Validators (order matters: Pre-deploy validators first, then post-deploy)
     builder.Services.AddScoped<IDeploymentValidator, PreDeployAuthValidator>();
+    builder.Services.AddScoped<IDeploymentValidator, PreDeployFoHostValidator>();
     builder.Services.AddScoped<IDeploymentValidator, PostDeployLogValidator>();
     
     // Main deploy service (orchestrator)

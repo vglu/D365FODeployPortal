@@ -8,6 +8,12 @@ namespace DeployPortal.Services.Deployment.PacCli;
 /// </summary>
 public class PacAuthService : IPacAuthService
 {
+    /// <summary>
+    /// Only one deployment at a time may run PAC auth create/select/who/pre-bind.
+    /// Long package installs release this gate and run in parallel.
+    /// </summary>
+    private static readonly SemaphoreSlim AuthBindGate = new(1, 1);
+
     private readonly IPacCliExecutor _pacExecutor;
     private readonly ISecretProtectionService _secretService;
     private readonly ISettingsService _settings;
@@ -23,6 +29,15 @@ public class PacAuthService : IPacAuthService
         _secretService = secretService ?? throw new ArgumentNullException(nameof(secretService));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    /// <inheritdoc />
+    public async Task<IDisposable> AcquireAuthBindGateAsync(Action<string>? onLog = null)
+    {
+        onLog?.Invoke("[Auth bind] Waiting for exclusive PAC auth/bind window...");
+        await AuthBindGate.WaitAsync();
+        onLog?.Invoke("[Auth bind] Exclusive PAC auth/bind window acquired.");
+        return new AuthBindGateReleaser(onLog);
     }
 
     public async Task AuthenticateAsync(
@@ -45,6 +60,36 @@ public class PacAuthService : IPacAuthService
         else
         {
             await AuthenticateInteractivelyAsync(environment, envVars, onLog);
+        }
+
+        var profileName = GetSafeProfileName(environment.Name);
+        await SelectAuthProfileAsync(profileName, envVars, onLog);
+    }
+
+    public async Task SelectProfileAsync(
+        Models.Environment environment,
+        string isolatedAuthDir,
+        Action<string>? onLog = null)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        ArgumentNullException.ThrowIfNull(isolatedAuthDir);
+
+        var envVars = new Dictionary<string, string>
+        {
+            ["PAC_AUTH_PROFILE_DIRECTORY"] = isolatedAuthDir
+        };
+        await SelectAuthProfileAsync(GetSafeProfileName(environment.Name), envVars, onLog);
+    }
+
+    private sealed class AuthBindGateReleaser(Action<string>? onLog) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            AuthBindGate.Release();
+            onLog?.Invoke("[Auth bind] Exclusive PAC auth/bind window released (long deploy may run in parallel).");
         }
     }
 
@@ -163,6 +208,30 @@ public class PacAuthService : IPacAuthService
         }
 
         _logger.LogInformation("Interactive authentication successful");
+    }
+
+    private async Task SelectAuthProfileAsync(
+        string profileName,
+        Dictionary<string, string> envVars,
+        Action<string>? onLog)
+    {
+        onLog?.Invoke($"Selecting PAC auth profile: {profileName}");
+        var workingDir = GetWorkingDirectory();
+        var result = await _pacExecutor.ExecuteAsync(
+            $"auth select --name \"{profileName}\"",
+            workingDir,
+            envVars,
+            onOutput: onLog,
+            onError: line => onLog?.Invoke($"[ERROR] {line}"));
+
+        if (!result.IsSuccess)
+        {
+            throw new InvalidOperationException(
+                $"PAC 'auth select --name {profileName}' failed with exit code {result.ExitCode}. " +
+                $"Error: {result.StandardError}");
+        }
+
+        _logger.LogInformation("PAC auth profile selected: {Profile}", profileName);
     }
 
     private string GetWorkingDirectory()

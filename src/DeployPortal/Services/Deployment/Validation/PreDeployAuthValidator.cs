@@ -4,7 +4,8 @@ namespace DeployPortal.Services.Deployment.Validation;
 
 /// <summary>
 /// Pre-deployment validator: checks that PAC CLI authenticated to the correct environment.
-/// Uses 'pac auth who' output; prefers Organization Friendly Name from DB when set.
+/// Always requires a bind signal from 'pac auth who' (URL host and/or org friendly name vs Environment.Name).
+/// Optional stricter Friendly Name match when Settings toggle is on and DB value is set.
 /// </summary>
 public class PreDeployAuthValidator : IDeploymentValidator
 {
@@ -15,16 +16,11 @@ public class PreDeployAuthValidator : IDeploymentValidator
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    public DeploymentValidationPhase Phase => DeploymentValidationPhase.PreDeploy;
+
     public Task ValidateAsync(DeploymentContext context, Action<string>? onLog = null)
     {
         ArgumentNullException.ThrowIfNull(context);
-
-        // When "Additionally verify Friendly Name on deploy" is off, skip this validation entirely.
-        if (!context.VerifyOrganizationFriendlyName)
-        {
-            onLog?.Invoke("[Pre-Deploy Validation] Skipped (verify Friendly Name is disabled in Settings).");
-            return Task.CompletedTask;
-        }
 
         if (string.IsNullOrWhiteSpace(context.PacAuthWhoOutput))
         {
@@ -33,86 +29,86 @@ public class PreDeployAuthValidator : IDeploymentValidator
                 "Ensure PacAuthWhoOutput is set before calling this validator.");
         }
 
-        onLog?.Invoke("[Pre-Deploy Validation] Verifying 'pac auth who' output...");
+        onLog?.Invoke("[Pre-Deploy Validation] Verifying PAC auth is bound to the selected environment...");
 
         var whoOutput = context.PacAuthWhoOutput;
-        var whoFriendlyName = PacAuthWhoParser.ParseOrganizationFriendlyName(whoOutput);
+        var expectedUrl = (context.Environment.Url ?? "").Trim().TrimEnd('/');
+        var expectedName = (context.Environment.Name ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(expectedUrl) && string.IsNullOrWhiteSpace(expectedName))
+        {
+            throw new InvalidOperationException(
+                "Cannot validate pre-deployment auth: environment URL and Name are empty.");
+        }
 
-        // If setting is on and we have Organization Friendly Name stored for this environment, require match (normalized)
-        if (context.VerifyOrganizationFriendlyName && !string.IsNullOrWhiteSpace(context.Environment.OrganizationFriendlyName))
+        var whoLower = whoOutput.ToLowerInvariant();
+        var urlHost = expectedUrl.ToLowerInvariant()
+            .Replace("https://", "", StringComparison.Ordinal)
+            .Replace("http://", "", StringComparison.Ordinal)
+            .TrimEnd('/');
+
+        // PAC auth who often has Friendly Name / Default organization, not the CRM URL.
+        var whoFriendly = PacAuthWhoParser.ParseOrganizationFriendlyName(whoOutput);
+        var urlMatch = !string.IsNullOrWhiteSpace(urlHost) &&
+                       whoLower.Contains(urlHost, StringComparison.Ordinal);
+        var nameMatch = !string.IsNullOrWhiteSpace(expectedName) &&
+                        (string.Equals(
+                             PacAuthWhoParser.NormalizeForCompare(whoFriendly),
+                             PacAuthWhoParser.NormalizeForCompare(expectedName),
+                             StringComparison.OrdinalIgnoreCase) ||
+                         whoLower.Contains($"default organization: {expectedName.ToLowerInvariant()}") ||
+                         whoLower.Contains($"connected to... {expectedName.ToLowerInvariant()}"));
+
+        if (!urlMatch && !nameMatch)
+        {
+            throw new InvalidOperationException(
+                "PRE-DEPLOYMENT VALIDATION FAILED: PAC auth is not bound to the selected environment.\n\n" +
+                $"Expected environment: {expectedName} ({expectedUrl})\n" +
+                $"Organization Friendly Name from who: {whoFriendly ?? "(missing)"}\n\n" +
+                $"'pac auth who' output:\n{whoOutput}");
+        }
+
+        onLog?.Invoke(urlMatch
+            ? $"[Pre-Deploy Validation] Auth who contains expected URL host: {urlHost}"
+            : $"[Pre-Deploy Validation] Auth who org matches environment name: {expectedName}");
+
+        // Optional extra: stored Friendly Name when enabled.
+        if (context.VerifyOrganizationFriendlyName &&
+            !string.IsNullOrWhiteSpace(context.Environment.OrganizationFriendlyName))
         {
             var expectedFriendly = context.Environment.OrganizationFriendlyName.Trim();
-            if (string.IsNullOrWhiteSpace(whoFriendlyName))
+            if (string.IsNullOrWhiteSpace(whoFriendly))
             {
                 throw new InvalidOperationException(
-                    $"❌ PRE-DEPLOYMENT VALIDATION FAILED! ❌\n" +
-                    $"Expected Organization Friendly Name: {expectedFriendly}\n" +
-                    $"But 'pac auth who' output does not contain 'Organization Friendly Name:' line.\n\n" +
+                    "PRE-DEPLOYMENT VALIDATION FAILED: Organization Friendly Name expected but missing in 'pac auth who'.\n\n" +
+                    $"Expected: {expectedFriendly}\n\n" +
                     $"'pac auth who' output:\n{whoOutput}");
             }
 
             var expectedNorm = PacAuthWhoParser.NormalizeForCompare(expectedFriendly);
-            var whoNorm = PacAuthWhoParser.NormalizeForCompare(whoFriendlyName);
+            var whoNorm = PacAuthWhoParser.NormalizeForCompare(whoFriendly);
             if (!string.Equals(whoNorm, expectedNorm, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogError(
                     "PRE-DEPLOYMENT VALIDATION FAILED! Expected Organization Friendly Name: {Expected}, actual: {Actual}",
-                    expectedFriendly, whoFriendlyName);
+                    expectedFriendly, whoFriendly);
 
                 throw new InvalidOperationException(
-                    $"❌ PRE-DEPLOYMENT VALIDATION FAILED! ❌\n" +
-                    $"PAC CLI authenticated to WRONG environment!\n\n" +
-                    $"Expected Organization Friendly Name: {expectedFriendly}\n" +
-                    $"But 'pac auth who' shows: {whoFriendlyName}\n\n" +
-                    $"This indicates the Service Principal may have access to multiple environments " +
-                    $"and PAC CLI selected the wrong one.\n\n" +
+                    "PRE-DEPLOYMENT VALIDATION FAILED: Organization Friendly Name mismatch.\n\n" +
+                    $"Expected: {expectedFriendly}\n" +
+                    $"Actual: {whoFriendly}\n\n" +
                     $"'pac auth who' output:\n{whoOutput}");
             }
 
-            onLog?.Invoke($"[Pre-Deploy Validation] ✓ Matched by Organization Friendly Name: {whoFriendlyName}");
-            _logger.LogInformation(
-                "Pre-deployment auth validation passed for environment: {Env} (Organization Friendly Name: {FriendlyName})",
-                context.Environment.Url, whoFriendlyName);
-            return Task.CompletedTask;
+            onLog?.Invoke($"[Pre-Deploy Validation] Stored Friendly Name matched: {whoFriendly}");
         }
-
-        // Fallback: match by URL or environment name (legacy behavior)
-        var expectedUrl = context.Environment.Url.ToLowerInvariant();
-        var expectedName = context.Environment.Name.ToLowerInvariant();
-        var whoOutputLower = whoOutput.ToLowerInvariant();
-        var urlMatch = whoOutputLower.Contains(expectedUrl);
-        var friendlyNameMatch = whoFriendlyName != null &&
-            string.Equals(whoFriendlyName.Trim(), expectedName, StringComparison.OrdinalIgnoreCase);
-        if (!friendlyNameMatch)
+        else if (!context.VerifyOrganizationFriendlyName)
         {
-            friendlyNameMatch = whoOutputLower.Contains($"organization friendly name: {expectedName}") ||
-                                whoOutputLower.Contains($"organization: {expectedName}") ||
-                                whoOutputLower.Contains($"default organization: {expectedName}");
+            onLog?.Invoke("[Pre-Deploy Validation] Extra Friendly Name setting off; bind check by URL/name applied.");
         }
 
-        if (!urlMatch && !friendlyNameMatch)
-        {
-            var errorMsg =
-                $"❌ PRE-DEPLOYMENT VALIDATION FAILED! ❌\n" +
-                $"PAC CLI authenticated to WRONG environment!\n\n" +
-                $"Expected environment: {context.Environment.Name} ({context.Environment.Url})\n" +
-                $"But 'pac auth who' output does not contain expected URL or Organization Name.\n\n" +
-                $"This indicates the Service Principal may have access to multiple environments " +
-                $"and PAC CLI selected the wrong one.\n\n" +
-                $"'pac auth who' output:\n{context.PacAuthWhoOutput}";
-
-            _logger.LogError(
-                "PRE-DEPLOYMENT VALIDATION FAILED! Expected: {Expected}, 'pac auth who' output does not contain this URL or Name",
-                context.Environment.Url);
-
-            throw new InvalidOperationException(errorMsg);
-        }
-
-        var matchType = urlMatch ? "URL" : "Organization Friendly Name";
-        onLog?.Invoke($"[Pre-Deploy Validation] ✓ Matched by {matchType}: {context.Environment.Name}");
         _logger.LogInformation(
-            "Pre-deployment auth validation passed for environment: {Env} (matched by {MatchType})",
-            context.Environment.Url, matchType);
+            "Pre-deployment auth validation passed for environment: {Env}",
+            context.Environment.Url);
 
         return Task.CompletedTask;
     }

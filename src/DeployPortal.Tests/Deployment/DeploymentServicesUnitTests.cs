@@ -99,22 +99,41 @@ public class DeploymentServicesUnitTests
     #region PreDeployAuthValidator Tests
 
     [Test]
-    public async Task PreDeployAuthValidator_ValidateAsync_Passes_WhenVerifyFriendlyNameIsOff()
+    public async Task PreDeployAuthValidator_ValidateAsync_Passes_WhenVerifyFriendlyNameIsOff_ButNameMatches()
     {
-        // When setting is off, validator skips and never throws
+        // Friendly Name toggle off does not disable bind check (name/URL).
         var logger = new Mock<ILogger<PreDeployAuthValidator>>();
         var validator = new PreDeployAuthValidator(logger.Object);
         var context = new DeploymentContext
         {
-            Environment = new Models.Environment { Name = "Test", Url = "test-env.crm.dynamics.com" },
+            Environment = new Models.Environment { Name = "Cst-hfx-tst-03", Url = "cst-hfx-tst-03.crm.dynamics.com" },
             IsolatedAuthDir = _testDir,
             LogFilePath = Path.Combine(_testDir, "deploy.log"),
             PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
             VerifyOrganizationFriendlyName = false,
-            PacAuthWhoOutput = "Organization Friendly Name: WRONG-ENV"
+            PacAuthWhoOutput = "Organization Friendly Name: CST-HFX-TST-03"
         };
         Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
         await Task.CompletedTask;
+    }
+
+    [Test]
+    public void PreDeployAuthValidator_ValidateAsync_Throws_WhenBindMissing_EvenIfFriendlyNameOff()
+    {
+        var logger = new Mock<ILogger<PreDeployAuthValidator>>();
+        var validator = new PreDeployAuthValidator(logger.Object);
+        var context = new DeploymentContext
+        {
+            Environment = new Models.Environment { Name = "Cst-hfx-tst-03", Url = "cst-hfx-tst-03.crm.dynamics.com" },
+            IsolatedAuthDir = _testDir,
+            LogFilePath = Path.Combine(_testDir, "deploy.log"),
+            PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            VerifyOrganizationFriendlyName = false,
+            PacAuthWhoOutput = "Organization Friendly Name: CST-HFX-TST-05"
+        };
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await validator.ValidateAsync(context));
+        Assert.That(ex!.Message, Does.Contain("PRE-DEPLOYMENT VALIDATION FAILED"));
+        Assert.That(ex.Message, Does.Contain("Cst-hfx-tst-03"));
     }
 
     [Test]
@@ -160,11 +179,11 @@ public class DeploymentServicesUnitTests
             LogFilePath = Path.Combine(_testDir, "deploy.log"),
             PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
             VerifyOrganizationFriendlyName = true,
-            // Real output from pac auth who (interactive auth) — no URL, but has Organization Friendly Name
             PacAuthWhoOutput = @"Connected as user@example.com
 Type: User
 Organization Id: aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
-Organization Friendly Name: Example-Target-Env"
+Organization Friendly Name: Example-Target-Env
+Environment Url: https://target-env.crm.dynamics.com/"
         };
 
         // Act & Assert
@@ -523,7 +542,7 @@ Organization Friendly Name: Example-Target-Env"
         Assert.That(capturedCwd, Is.EqualTo(_testDir));
         Assert.That(capturedArgs, Does.Contain("package deploy"));
         Assert.That(capturedArgs, Does.Contain("--verbose"));
-        Assert.That(capturedArgs, Does.Contain("pac_deploy_").And.Contain(".zip"));
+        Assert.That(capturedArgs, Does.Contain("pac_unified_").And.Contain(".zip"));
         Assert.That(capturedArgs, Does.Not.Contain("TemplatePackage.dll"));
     }
 
@@ -534,6 +553,119 @@ Organization Friendly Name: Example-Target-Env"
         var evidence = PackageDeployFailureDetector.FindFailureEvidence(text);
         Assert.That(evidence, Is.Not.Null);
         Assert.That(evidence, Does.Contain("ExternalOrchestration"));
+    }
+
+    [Test]
+    public void PackageDeployFailureDetector_FindFoHostBusyEvidence_DetectsExternalOrchestration()
+    {
+        var text = "Request cannot be accepted on the host environment with state: ExternalOrchestration";
+        var evidence = PackageDeployFailureDetector.FindFoHostBusyEvidence(text);
+        Assert.That(evidence, Is.Not.Null);
+        Assert.That(evidence, Does.Contain("ExternalOrchestration"));
+    }
+
+    [Test]
+    public void PackageDeployFailureDetector_FindFoHostBusyEvidence_IgnoresUnrelatedErrorLine()
+    {
+        var text = "Error: something unrelated to FO host\nImport configuration loaded";
+        Assert.That(PackageDeployFailureDetector.FindFoHostBusyEvidence(text), Is.Null);
+    }
+
+    [Test]
+    public async Task PreDeployFoHostValidator_Skips_WhenDisabled()
+    {
+        var pac = new Mock<IPacCliExecutor>();
+        var logger = new Mock<ILogger<PreDeployFoHostValidator>>();
+        var validator = new PreDeployFoHostValidator(pac.Object, logger.Object);
+        var context = new DeploymentContext
+        {
+            Environment = new Models.Environment { Name = "T", Url = "t.crm.dynamics.com" },
+            IsolatedAuthDir = _testDir,
+            LogFilePath = Path.Combine(_testDir, "d.log"),
+            PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            VerifyFoHostReadyOnDeploy = false
+        };
+
+        Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
+        pac.Verify(p => p.ExecuteAsync(
+            It.IsAny<string>(), It.IsAny<string>(), It.IsAny<IDictionary<string, string>?>(),
+            It.IsAny<Action<string>?>(), It.IsAny<Action<string>?>()), Times.Never);
+        await Task.CompletedTask;
+    }
+
+    [Test]
+    public void PreDeployFoHostValidator_Throws_WhenHostBusy()
+    {
+        var zip = Path.Combine(_testDir, "probe.zip");
+        File.WriteAllText(zip, "zip");
+        File.WriteAllText(Path.Combine(_testDir, "TemplatePackage.dll"), "dll");
+
+        var pac = new Mock<IPacCliExecutor>();
+        pac.Setup(p => p.ExecuteAsync(
+                It.Is<string>(a => a.Contains("package show")),
+                It.IsAny<string>(),
+                It.IsAny<IDictionary<string, string>?>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<string>?>()))
+            .ReturnsAsync(new PacCliResult
+            {
+                ExitCode = 0,
+                StandardOutput = "Request cannot be accepted on the host environment with state: ExternalOrchestration\n",
+                StandardError = ""
+            });
+
+        var logger = new Mock<ILogger<PreDeployFoHostValidator>>();
+        var validator = new PreDeployFoHostValidator(pac.Object, logger.Object);
+        var context = new DeploymentContext
+        {
+            Environment = new Models.Environment { Name = "T", Url = "t.crm.dynamics.com" },
+            IsolatedAuthDir = _testDir,
+            LogFilePath = Path.Combine(_testDir, "d.log"),
+            PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            DeployZipPath = zip,
+            VerifyFoHostReadyOnDeploy = true
+        };
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await validator.ValidateAsync(context));
+        Assert.That(ex!.Message, Does.Contain("FO HOST CHECK FAILED"));
+        Assert.That(ex.Message, Does.Contain("ExternalOrchestration"));
+    }
+
+    [Test]
+    public async Task PreDeployFoHostValidator_Passes_WhenProbeClean()
+    {
+        var zip = Path.Combine(_testDir, "probe_ok.zip");
+        File.WriteAllText(zip, "zip");
+        File.WriteAllText(Path.Combine(_testDir, "TemplatePackage.dll"), "dll");
+
+        var pac = new Mock<IPacCliExecutor>();
+        pac.Setup(p => p.ExecuteAsync(
+                It.Is<string>(a => a.Contains("package show")),
+                It.IsAny<string>(),
+                It.IsAny<IDictionary<string, string>?>(),
+                It.IsAny<Action<string>?>(),
+                It.IsAny<Action<string>?>()))
+            .ReturnsAsync(new PacCliResult
+            {
+                ExitCode = 0,
+                StandardOutput = "Import configuration loaded. - Complete\nRead Finance and Operations Application Host Details - Complete\n",
+                StandardError = ""
+            });
+
+        var logger = new Mock<ILogger<PreDeployFoHostValidator>>();
+        var validator = new PreDeployFoHostValidator(pac.Object, logger.Object);
+        var context = new DeploymentContext
+        {
+            Environment = new Models.Environment { Name = "T", Url = "t.crm.dynamics.com" },
+            IsolatedAuthDir = _testDir,
+            LogFilePath = Path.Combine(_testDir, "d.log"),
+            PackagePath = Path.Combine(_testDir, "TemplatePackage.dll"),
+            DeployZipPath = zip,
+            VerifyFoHostReadyOnDeploy = true
+        };
+
+        Assert.DoesNotThrowAsync(async () => await validator.ValidateAsync(context));
+        await Task.CompletedTask;
     }
 
     [Test]
@@ -696,10 +828,10 @@ Organization Friendly Name: Example-Target-Env"
     #region DeploymentOrchestrator (delay constant)
 
     [Test]
-    public void DeploymentOrchestrator_DelayBetweenStarts_IsThirtySeconds()
+    public void DeploymentOrchestrator_DelayBetweenStarts_IsNinetySeconds()
     {
-        Assert.That(DeploymentOrchestrator.DelayBetweenStartsSeconds, Is.EqualTo(30),
-            "Delay between deployment starts must remain 30 seconds unless product requirement changes.");
+        Assert.That(DeploymentOrchestrator.DelayBetweenStartsSeconds, Is.EqualTo(90),
+            "Stagger between deployment starts must cover the PAC auth/bind window; long installs stay parallel.");
     }
 
     #endregion

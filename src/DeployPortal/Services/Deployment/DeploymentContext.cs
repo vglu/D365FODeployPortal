@@ -10,6 +10,11 @@ public class DeploymentContext
     public required string IsolatedAuthDir { get; init; }
     public required string LogFilePath { get; init; }
     public required string PackagePath { get; init; }
+
+    /// <summary>
+    /// Temporary Unified zip (DLL + PackageAssets) shared by FO host probe and package deploy.
+    /// </summary>
+    public string? DeployZipPath { get; set; }
     
     /// <summary>
     /// Output from 'pac auth who' command.
@@ -22,4 +27,10 @@ public class DeploymentContext
     /// From Settings: VerifyOrganizationFriendlyNameOnDeploy.
     /// </summary>
     public bool VerifyOrganizationFriendlyName { get; set; }
+
+    /// <summary>
+    /// When true, PreDeployFoHostValidator runs <c>pac package show</c> before deploy.
+    /// From Settings: VerifyFoHostReadyOnDeploy.
+    /// </summary>
+    public bool VerifyFoHostReadyOnDeploy { get; set; }
 }

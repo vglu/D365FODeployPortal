@@ -6,15 +6,21 @@ namespace DeployPortal.Services.Deployment.PacCli;
 public interface IPacDeploymentService
 {
     /// <summary>
-    /// Deploys a Unified package (TemplatePackage.dll) to Power Platform environment.
+    /// Deploys a Unified package to Power Platform.
     /// </summary>
     /// <param name="packagePath">Full path to TemplatePackage.dll</param>
     /// <param name="logFilePath">Path where PAC CLI should write deployment log</param>
     /// <param name="isolatedAuthDir">Isolated directory for PAC auth profile</param>
     /// <param name="onLog">Optional callback for logging</param>
+    /// <param name="prebuiltZipPath">
+    /// Optional zip of the Unified folder (from <see cref="UnifiedPackageZipBuilder"/>).
+    /// When set, this file is used as <c>--package</c> and is not deleted by this method
+    /// (caller owns lifetime). When null, a temporary zip is created and deleted here.
+    /// </param>
     Task DeployAsync(
         string packagePath,
         string logFilePath,
         string isolatedAuthDir,
-        Action<string>? onLog = null);
+        Action<string>? onLog = null,
+        string? prebuiltZipPath = null);
 }
